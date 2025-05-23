@@ -1,1 +1,3 @@
 # Add project dependencies here
+requests
+python-dotenv

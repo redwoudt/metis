@@ -1,3 +1,3 @@
 # Metis GenAI
 
-An open-source modular GenAI orchestration system with support for Facade, Strategy, and Policy design patterns.
+An open-source modular GenAI orchestration system demonstrating practical implementation of key software design patterns.
