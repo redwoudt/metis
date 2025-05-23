@@ -1,0 +1,5 @@
+[tool.poetry]
+name = "metis-genai"
+version = "0.1.0"
+description = "Modular GenAI orchestration system"
+authors = ["Your Name <you@example.com>"]
