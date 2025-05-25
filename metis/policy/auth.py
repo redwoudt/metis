@@ -8,7 +8,9 @@ Next Steps:
 - Support user roles, tokens, or JWT-based validation.
 - Add user identity logging or multi-factor enforcement.
 """
+
 from metis.policy.base import Policy
+
 
 class AuthPolicy(Policy):
     def enforce(self, user_id, request):

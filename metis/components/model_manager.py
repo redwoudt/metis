@@ -14,6 +14,7 @@ Expansion Ideas:
 - Implement token counting and budget enforcement.
 """
 
+
 class Model:
     def __init__(self, name="MockModel"):
         self.name = name

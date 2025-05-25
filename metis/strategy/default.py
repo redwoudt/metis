@@ -8,7 +8,9 @@ Next Steps:
 - Add support for basic task templating.
 - Optionally enrich with recent context.
 """
+
 from metis.strategy.base import PromptStrategy
+
 
 class DefaultPromptStrategy(PromptStrategy):
     def build_prompt(self, session, user_input):

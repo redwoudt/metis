@@ -7,7 +7,9 @@ How it works:
 Next Steps:
 - Add support for custom formatting rules or plug-ins.
 """
+
 from metis.strategy.base import PromptStrategy
+
 
 class CustomPromptStrategy(PromptStrategy):
     def build_prompt(self, session, user_input):

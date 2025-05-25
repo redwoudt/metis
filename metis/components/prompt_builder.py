@@ -19,6 +19,7 @@ Expansion Ideas:
 import html
 import re
 
+
 class PromptBuilder:
     def __init__(self, format_style="default"):
         self.format_style = format_style
@@ -79,7 +80,7 @@ class PromptBuilder:
             for p, r in history[-3:]
         ]
         return (
-            f"{{\n  \"session\": \"{user_id}\",\n  "
-            f"\"task\": \"{task}\",\n  \"context\": {context},\n  "
-            f"\"input\": \"{self._sanitize(user_input)}\"\n}}"
+            f'{{\n  "session": "{user_id}",\n  '
+            f'"task": "{task}",\n  "context": {context},\n  '
+            f'"input": "{self._sanitize(user_input)}"\n}}'
         )
