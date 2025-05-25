@@ -2,14 +2,14 @@
 
 # Create and activate virtual environment
 env:
-	python -m venv .venv
+	python3 -m venv .venv
 	. .venv/bin/activate || source .venv/bin/activate
 
 # Install runtime and development dependencies
 install:
-	. .venv/bin/activate || source .venv/bin/activate && \
-	pip install -r requirements.txt && \
-	pip install -r dev-requirements.txt
+	. .venv/bin/activate || source .venv/bin/activate
+	.venv/bin/pip install -r requirements.txt
+	.venv/bin/pip install -r dev-requirements.txt
 
 # Format code using black
 format:

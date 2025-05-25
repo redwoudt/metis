@@ -146,8 +146,7 @@ TODO
 ### Run Request
 The run_request.py script is now a CLI tool! You can run it from the terminal like this:
 
-python examples/run_request.py --user user_123 --prompt "What’s the weather in London today?"
-
+python -m examples.run_request --user user_123 --prompt "What’s the weather in London today?"
 It will send the prompt through the RequestHandler and print the response.
 
 ### Check Test Coverage 

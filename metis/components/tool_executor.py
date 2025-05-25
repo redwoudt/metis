@@ -14,20 +14,28 @@ Expansion Ideas:
 - Support sandboxing or rate limiting per tool.
 """
 
+import re
 import requests
 from metis.config import Config
 
 class ToolExecutor:
     def execute(self, tool_name, user_input):
         if tool_name.lower() == "weather":
-            return self._get_weather()
+            return self._get_weather(user_input)
         raise Exception(f"Tool '{tool_name}' not supported.")
 
-    def _get_weather(self):
+    def _get_weather(self, user_input: str) -> str:
+        import re
+
+        # Extract a location, default to London
+        match = re.search(r"in ([A-Za-z ]+)", user_input, re.IGNORECASE)
+        location = match.group(1).strip() if match else "London"
+
         try:
-            response = requests.get(Config.WEATHER_API_URL)
+            url = f"{Config.WEATHER_API_URL}/{location}?format=3"
+            response = requests.get(url)
             if response.status_code == 200:
                 return response.text.strip()
-            return "Weather unavailable"
+            return f"Weather unavailable for {location}"
         except Exception:
             return "Weather service error"
