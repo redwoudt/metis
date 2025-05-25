@@ -1,0 +1,6 @@
+# Developer tools for code quality and static analysis
+
+black==24.3.0        # Auto formatter for consistent code style
+mypy==1.10.0         # Static type checker for Python
+coverage==7.4.4      # Code coverage reporting for tests
+pytest==8.2.0        # Framework for running unit tests

@@ -1,5 +1,25 @@
-[tool.poetry]
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
 name = "metis-genai"
 version = "0.1.0"
-description = "Modular GenAI orchestration system"
-authors = ["Your Name <you@example.com>"]
+description = "A modular GenAI orchestration system using Facade, Strategy, and Policy patterns."
+readme = "README.md"
+license = { text = "CC BY-NC 4.0" }
+authors = [
+    { name = "Ferdinand Redelinghuys", email = "fcredelinghuys@gmail.com" }
+]
+dependencies = []
+requires-python = ">=3.9"
+
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
