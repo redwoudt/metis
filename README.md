@@ -143,11 +143,19 @@ TODO
 
 <!-- USAGE EXAMPLES -->
 ## Usage
+
+### Run Request
 The run_request.py script is now a CLI tool! You can run it from the terminal like this:
 
 python examples/run_request.py --user user_123 --prompt "What’s the weather in London today?"
 
 It will send the prompt through the RequestHandler and print the response.
+
+### Check Test Coverage 
+
+To check the current test coverage run: 
+
+make coverage
 
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

@@ -1,1 +1,3 @@
-# This file marks the test package root
+"""
+Tests for prompt strategies, including default and custom behaviors.
+"""

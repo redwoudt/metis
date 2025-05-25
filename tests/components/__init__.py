@@ -1,1 +1,3 @@
-# Tests for core components like SessionManager, ToolExecutor, etc.
+"""
+Tests for core system components like PromptBuilder, ToolExecutor, etc.
+"""

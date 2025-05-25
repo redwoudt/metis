@@ -1,1 +1,3 @@
-# Tests related to the handler (e.g., RequestHandler)
+"""
+Tests for the RequestHandler facade logic and orchestration behavior.
+"""
