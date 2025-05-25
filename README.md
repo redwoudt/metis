@@ -68,10 +68,9 @@ sub<a id="readme-top"></a>
   </ol>
 </details>
 
-
-
 <!-- ABOUT THE PROJECT -->
 ## About The Project: Metis
+[![CI](https://github.com/redwoudt/metis/actions/workflows/ci.yml/badge.svg)](https://github.com/redwoudt/metis/actions/workflows/ci.yml) [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/) [![Code Style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![codecov](https://codecov.io/gh/redwoudt/metis/branch/main/graph/badge.svg)](https://codecov.io/gh/redwoudt/metis)
 
 A modular orchestration system for generative AI, built using Python design patterns like Facade, Strategy, and Policy.
