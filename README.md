@@ -71,7 +71,10 @@ sub<a id="readme-top"></a>
 
 
 <!-- ABOUT THE PROJECT -->
-## About The Project
+## About The Project: Metis
+[![codecov](https://codecov.io/gh/redwoudt/metis/branch/main/graph/badge.svg)](https://codecov.io/gh/redwoudt/metis)
+
+A modular orchestration system for generative AI, built using Python design patterns like Facade, Strategy, and Policy.
 
 [![Product Name Screen Shot][product-screenshot]](https://example.com)
 
@@ -94,10 +97,7 @@ What you will learn:
 
 The book teaches 23 software design patterns by applying each one to a practical component in a full-featured GenAI system. The modular architecture evolves with each chapter, helping readers understand how design decisions shape real-world AI systems.
 
-
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
 
 ### Built With
 
