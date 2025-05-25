@@ -1,6 +1,7 @@
 """
 Tests for PromptBuilder, including default and JSON formatting, sanitization, and templates.
 """
+
 from metis.components.prompt_builder import PromptBuilder
 
 
@@ -15,7 +16,7 @@ def test_prompt_builder_json():
     builder = PromptBuilder(format_style="json")
     session = {"user_id": "user_json", "history": [("Hi", "Hello")]}
     result = builder.build(session, "Plan my day")
-    assert "\"session\": \"user_json\"" in result
+    assert '"session": "user_json"' in result
     assert "Plan my day" in result
 
 

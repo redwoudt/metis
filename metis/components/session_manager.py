@@ -14,6 +14,7 @@ Expansion Ideas:
 - Introduce versioning for session schema changes.
 """
 
+
 class SessionManager:
     def __init__(self):
         self.memory = {}

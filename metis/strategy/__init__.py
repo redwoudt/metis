@@ -9,6 +9,7 @@ Next Steps:
 - Add more advanced strategies for task-specific formatting.
 - Support dynamic strategy registration or user-defined strategies.
 """
+
 from .base import PromptStrategy
 from .default import DefaultPromptStrategy
 from .custom import CustomPromptStrategy

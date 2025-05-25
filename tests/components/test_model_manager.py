@@ -1,6 +1,7 @@
 """
 Tests for ModelManager behavior including model selection logic and output formatting.
 """
+
 from metis.components.model_manager import ModelManager
 
 

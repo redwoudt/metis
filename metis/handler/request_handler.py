@@ -25,11 +25,9 @@ from metis.policy.rate_limit import RateLimitPolicy
 from metis.policy.auth import AuthPolicy
 from metis.exceptions import ToolExecutionError
 
+
 class RequestHandler:
-    def __init__(self,
-                 strategy=None,
-                 policy=None,
-                 tool_executor=None):
+    def __init__(self, strategy=None, policy=None, tool_executor=None):
         self.session_manager = SessionManager()
         self.tool_executor = tool_executor or ToolExecutor()
         self.prompt_builder = PromptBuilder()

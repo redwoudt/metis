@@ -1,6 +1,7 @@
 """
 Tests for SessionManager lifecycle and memory persistence.
 """
+
 from metis.components.session_manager import SessionManager
 
 

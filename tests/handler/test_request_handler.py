@@ -3,6 +3,7 @@ Unit and integration tests for the RequestHandler orchestration flow.
 Includes success paths, policy rejection, tool execution, session lifecycle,
 mock tracing, exception handling, and snapshot-style output checks.
 """
+
 import pytest
 from unittest.mock import MagicMock
 from metis.handler import RequestHandler
@@ -11,10 +12,7 @@ from tests.test_utils import MockPromptStrategy, AllowAllPolicy, DenyAllPolicy
 
 
 def test_handle_prompt_success():
-    handler = RequestHandler(
-        strategy=MockPromptStrategy(),
-        policy=AllowAllPolicy()
-    )
+    handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
     response = handler.handle_prompt("user_123", "Tell me something nice")
     assert "MockPrompt" in response
     assert "Tell me something nice" in response
@@ -27,19 +25,13 @@ def test_policy_enforcement_denied():
 
 
 def test_weather_tool_execution():
-    handler = RequestHandler(
-        strategy=MockPromptStrategy(),
-        policy=AllowAllPolicy()
-    )
+    handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
     response = handler.handle_prompt("user_456", "What’s the weather like today?")
     assert "weather" in response.lower() or "Weather Info" in response
 
 
 def test_session_lifecycle_and_prompt_building():
-    handler = RequestHandler(
-        strategy=MockPromptStrategy(),
-        policy=AllowAllPolicy()
-    )
+    handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
     user_id = "user_test"
     prompt = "Summarize yesterday's session"
 
@@ -58,7 +50,7 @@ def test_tool_execution_exception_handling():
     handler = RequestHandler(
         strategy=MockPromptStrategy(),
         policy=AllowAllPolicy(),
-        tool_executor=mock_executor
+        tool_executor=mock_executor,
     )
 
     with pytest.raises(ToolExecutionError) as exc:
@@ -68,10 +60,7 @@ def test_tool_execution_exception_handling():
 
 def test_tracing_output_snapshot():
     # Simulate a real call and snapshot the output format
-    handler = RequestHandler(
-        strategy=MockPromptStrategy(),
-        policy=AllowAllPolicy()
-    )
+    handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
     user_id = "user_snap"
     prompt = "Explain quantum mechanics"
     response = handler.handle_prompt(user_id, prompt)
