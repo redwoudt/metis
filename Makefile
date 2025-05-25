@@ -26,10 +26,16 @@ test:
 	. .venv/bin/activate || source .venv/bin/activate && \
 	pytest tests
 
+# Run test coverage
+coverage:
+	. .venv/bin/activate || source .venv/bin/activate && \
+	coverage run -m pytest && \
+	coverage report -m && \
+	coverage html
+
 # Run an example script
 run:
 	. .venv/bin/activate || source .venv/bin/activate && \
 	python examples/run_request.py
 
 # TODO: Add CI integration commands here
-# TODO: Add test coverage commands here

@@ -1,0 +1,12 @@
+[run]
+branch = True
+source =
+    metis
+
+[report]
+omit =
+    */__init__.py
+    metis/config.py
+    metis/exceptions.py
+    tests/*
+show_missing = True
