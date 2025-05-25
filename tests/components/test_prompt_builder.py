@@ -24,5 +24,5 @@ def test_prompt_sanitization():
     session = {"user_id": "user_123", "history": []}
     dirty_input = "<script>alert('hi')</script>    Please plan   this"
     result = builder.build(session, dirty_input)
-    assert "&lt;script&gt;alert('hi')&lt;/script&gt;" in result
+    assert "&lt;script&gt;alert(&#x27;hi&#x27;)&lt;/script&gt;" in result
     assert "Please plan this" in result

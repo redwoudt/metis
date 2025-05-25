@@ -76,5 +76,5 @@ def test_tracing_output_snapshot():
     prompt = "Explain quantum mechanics"
     response = handler.handle_prompt(user_id, prompt)
 
-    assert response.startswith("[MockPrompt]")
-    assert "Explain quantum mechanics" in response
+    assert "[MockPrompt] Explain quantum mechanics" in response
+    assert response.startswith("[DeepMockModel Output]")

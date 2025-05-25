@@ -1,6 +1,3 @@
 """
-Strategy module housing prompt strategies that customize how model input is generated.
+Metis GenAI: A modular orchestration system for generative AI.
 """
-from .base import PromptStrategy
-from .default import DefaultPromptStrategy
-from .custom import CustomPromptStrategy
