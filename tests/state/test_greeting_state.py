@@ -1,7 +1,7 @@
 # tests/state/test_greeting_state.py
 
-from states.greeting import GreetingState
-from conversation_engine import ConversationEngine
+from metis.states.greeting import GreetingState
+from metis.conversation_engine import ConversationEngine
 
 def test_greeting_transitions_to_clarifying():
     engine = ConversationEngine()

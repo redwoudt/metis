@@ -1,8 +1,7 @@
 # states/summarizing.py
 
-from states.base_state import ConversationState
-from states.greeting import GreetingState
-from prompts.prompt_builder import PromptBuilder
+from metis.states.base_state import ConversationState
+from metis.prompts.prompt_builder import PromptBuilder
 
 class SummarizingState(ConversationState):
     """
@@ -21,6 +20,8 @@ class SummarizingState(ConversationState):
         :param user_input: Optional input triggering summary.
         :return: Summary message.
         """
+        from metis.states.greeting import GreetingState  # ✅ Local import to avoid circular dependency
+
         state_name = self.__class__.__name__
         prompt = self.prompt_builder.build_prompt(state_name, user_input, engine.preferences)
 

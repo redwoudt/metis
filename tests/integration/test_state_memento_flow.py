@@ -1,7 +1,7 @@
 # tests/integration/test_state_memento_flow.py
 
-from conversation_engine import ConversationEngine
-from memory.manager import MemoryManager
+from metis.conversation_engine import ConversationEngine
+from metis.memory.manager import MemoryManager
 
 def test_state_memento_integration_flow():
     engine = ConversationEngine()
@@ -19,9 +19,10 @@ def test_state_memento_integration_flow():
     engine.respond("Hello")   # ClarifyingState
     engine.respond("Yes")     # ExecutingState
     engine.respond("Done")    # SummarizingState
+    engine.respond("Thanks")  # ✅ triggers return to GreetingState
 
     assert engine.state.__class__.__name__ == "GreetingState"
-    assert len(engine.history) == 4  # 1 manual, 3 from state responses
+    assert len(engine.history) == 5  # 1 manual, 4 from state responses
 
     # Roll back to original snapshot
     engine.restore_snapshot(memory.restore_last())

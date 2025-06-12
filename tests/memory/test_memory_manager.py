@@ -1,7 +1,7 @@
 # tests/memory/test_memory_manager.py
 
-from memory.manager import MemoryManager
-from memory.snapshot import ConversationSnapshot
+from metis.memory.manager import MemoryManager
+from metis.memory.snapshot import ConversationSnapshot
 
 def test_save_and_restore_snapshot():
     manager = MemoryManager()

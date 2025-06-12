@@ -1,7 +1,7 @@
 # states/clarifying.py
 
-from states.base_state import ConversationState
-from states.executing import ExecutingState
+from metis.states.base_state import ConversationState
+from metis.states.executing import ExecutingState
 
 
 class ClarifyingState(ConversationState):

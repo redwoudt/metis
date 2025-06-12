@@ -1,5 +1,5 @@
-from states.greeting import GreetingState  # Import initial conversation state
-from memory.snapshot import ConversationSnapshot  # Import Memento class for state snapshots
+from metis.states.greeting import GreetingState  # Import initial conversation state
+from metis.memory.snapshot import ConversationSnapshot  # Import Memento class for state snapshots
 import copy  # Used indirectly via ConversationSnapshot for deep copying
 
 class ConversationEngine:

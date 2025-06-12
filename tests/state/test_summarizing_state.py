@@ -1,7 +1,7 @@
 # tests/state/test_summarizing_state.py
 
-from states.summarizing import SummarizingState
-from conversation_engine import ConversationEngine
+from metis.states.summarizing import SummarizingState
+from metis.conversation_engine import ConversationEngine
 
 def test_summarizing_transitions_to_greeting():
     engine = ConversationEngine()

@@ -1,7 +1,7 @@
 # tests/state/test_clarifying_state.py
 
-from states.clarifying import ClarifyingState
-from conversation_engine import ConversationEngine
+from metis.states.clarifying import ClarifyingState
+from metis.conversation_engine import ConversationEngine
 
 def test_clarifying_transitions_to_executing():
     engine = ConversationEngine()

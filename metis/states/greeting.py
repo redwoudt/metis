@@ -1,8 +1,8 @@
 # states/greeting.py
 
-from states.base_state import ConversationState
-from states.clarifying import ClarifyingState
-from prompts.prompt_builder import PromptBuilder
+from metis.states.base_state import ConversationState
+from metis.states.clarifying import ClarifyingState
+from metis.prompts.prompt_builder import PromptBuilder
 
 class GreetingState(ConversationState):
     """

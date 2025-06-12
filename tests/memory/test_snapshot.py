@@ -1,6 +1,6 @@
 # tests/memory/test_snapshot.py
 
-from memory.snapshot import ConversationSnapshot
+from metis.memory.snapshot import ConversationSnapshot
 
 def test_snapshot_stores_deepcopy():
     state = {"nested": {"a": 1}}

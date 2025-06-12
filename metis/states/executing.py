@@ -1,8 +1,8 @@
 # states/executing.py
 
-from states.base_state import ConversationState
-from states.summarizing import SummarizingState
-from prompts.prompt_builder import PromptBuilder
+from metis.states.base_state import ConversationState
+from metis.states.summarizing import SummarizingState
+from metis.prompts.prompt_builder import PromptBuilder
 
 class ExecutingState(ConversationState):
     """
