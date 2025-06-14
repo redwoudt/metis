@@ -14,7 +14,7 @@ from tests.test_utils import MockPromptStrategy, AllowAllPolicy, DenyAllPolicy
 def test_handle_prompt_success():
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
     response = handler.handle_prompt("user_123", "Tell me something nice")
-    assert "MockPrompt" in response
+    assert "Tone: friendly" in response
     assert "Tell me something nice" in response
 
 
@@ -36,10 +36,10 @@ def test_session_lifecycle_and_prompt_building():
     prompt = "Summarize yesterday's session"
 
     first_response = handler.handle_prompt(user_id, prompt)
-    assert "MockPrompt" in first_response
+    assert "Welcome message context" in first_response
 
     second_response = handler.handle_prompt(user_id, "What did we talk about?")
-    assert "MockPrompt" in second_response
+    assert "did you mean" in second_response
     assert "What did we talk about?" in second_response
 
 
@@ -65,5 +65,5 @@ def test_tracing_output_snapshot():
     prompt = "Explain quantum mechanics"
     response = handler.handle_prompt(user_id, prompt)
 
-    assert "[MockPrompt] Explain quantum mechanics" in response
-    assert response.startswith("[DeepMockModel Output]")
+    assert "Welcome message context: Explain quantum mechanics" in response
+    assert response.startswith("[Tone: friendly] Welcome message context:")

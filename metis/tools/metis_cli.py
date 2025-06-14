@@ -26,8 +26,12 @@ def main():
 
     # Optional snapshot restore
     if args.undo:
-        engine.restore_snapshot(memory.restore_last())
-
+        snapshot = memory.restore_last()
+        if snapshot:
+            engine.restore_snapshot(snapshot)
+            print("✅ Previous snapshot restored.")
+        else:
+            print("⚠️  No snapshot found to restore.")
     # Handle prompt
     response = handler.handle_prompt(user_id, prompt)
 

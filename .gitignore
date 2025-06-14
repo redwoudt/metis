@@ -177,3 +177,7 @@ cython_debug/
 .DS_Store
 
 .idea
+
+# Ignore session and snapshot storage
+sessions.pkl
+snapshots.pkl
