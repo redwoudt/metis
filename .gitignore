@@ -180,4 +180,5 @@ cython_debug/
 
 # Ignore session and snapshot storage
 sessions.pkl
+snapshots.pkl.metis_sessions/
 snapshots.pkl

@@ -9,34 +9,71 @@ engine = ConversationEngine()
 handler = RequestHandler()  # Allow injecting engine manually if needed
 
 def main():
-    parser = argparse.ArgumentParser(description="Metis GenAI CLI with Snapshot Support")
-    parser.add_argument("--user", type=str, default="user_123", help="User ID")
-    parser.add_argument("--prompt", type=str, required=True, help="Prompt to send")
-    parser.add_argument("--save", action="store_true", help="Save a snapshot before prompt")
-    parser.add_argument("--undo", action="store_true", help="Restore last saved snapshot")
+    # Set up the CLI parser with subcommands
+    parser = argparse.ArgumentParser(description="Metis CLI - Chat or Prompt Generation")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # --- Chat Subcommand ---
+    # This mode runs the full conversation engine with memory and snapshots
+    chat_parser = subparsers.add_parser("chat", help="Run chat prompt with snapshot support")
+    chat_parser.add_argument("--user", type=str, default="user_123", help="User ID")
+    chat_parser.add_argument("--prompt", type=str, required=True, help="Prompt to send to the engine")
+    chat_parser.add_argument("--save", action="store_true", help="Save a snapshot before prompt")
+    chat_parser.add_argument("--undo", action="store_true", help="Restore last saved snapshot")
+
+    # --- Prompt Subcommand ---
+    # This mode directly renders a structured prompt from builder/template
+    prompt_parser = subparsers.add_parser("prompt", help="Generate a structured prompt directly")
+    prompt_parser.add_argument("--type", required=True, help="Prompt type: summarize, plan, clarify, critique")
+    prompt_parser.add_argument("--input", required=True, help="User input or query")
+    prompt_parser.add_argument("--context", default="", help="Optional memory or background context")
+    prompt_parser.add_argument("--tool_output", default="", help="Optional tool-generated output")
+    prompt_parser.add_argument("--tone", default="", help="Tone to apply to the assistant")
+    prompt_parser.add_argument("--persona", default="", help="Persona for assistant behavior")
 
     args = parser.parse_args()
-    user_id = args.user
-    prompt = args.prompt
 
-    # Optional snapshot save
-    if args.save:
-        snapshot = engine.create_snapshot()
-        memory.save(snapshot)
+    if args.command == "chat":
+        # Run full chat engine pipeline
+        user_id = args.user
+        prompt = args.prompt
 
-    # Optional snapshot restore
-    if args.undo:
-        snapshot = memory.restore_last()
-        if snapshot:
-            engine.restore_snapshot(snapshot)
-            print("✅ Previous snapshot restored.")
-        else:
-            print("⚠️  No snapshot found to restore.")
-    # Handle prompt
-    response = handler.handle_prompt(user_id, prompt)
+        # Optionally save a snapshot of the conversation state
+        if args.save:
+            snapshot = engine.create_snapshot()
+            memory.save(snapshot)
 
-    print("\nResponse:")
-    print(response)
+        # Optionally restore from last saved snapshot
+        if args.undo:
+            snapshot = memory.restore_last()
+            if snapshot:
+                engine.restore_snapshot(snapshot)
+                print("✅ Previous snapshot restored.")
+            else:
+                print("⚠️  No snapshot found to restore.")
+
+        # Handle the prompt using the main engine
+        response = handler.handle_prompt(user_id, prompt)
+        print("\nResponse:")
+        print(response)
+
+    elif args.command == "prompt":
+        # Generate a standalone structured prompt using Builder/Template
+        from metis.services.prompt_service import render_prompt
+
+        try:
+            result = render_prompt(
+                prompt_type=args.type,
+                user_input=args.input,
+                context=args.context,
+                tool_output=args.tool_output,
+                tone=args.tone,
+                persona=args.persona
+            )
+            print("\nGenerated Prompt:\n")
+            print(result)
+        except ValueError as e:
+            print(f"Error: {e}")
 
 
 if __name__ == "__main__":
