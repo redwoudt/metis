@@ -2,16 +2,13 @@
 
 from metis.states.base_state import ConversationState
 from metis.states.summarizing import SummarizingState
-from metis.prompts.prompt_builder import PromptBuilder
+from metis.services.prompt_service import render_prompt  # ✅ New import
 
 class ExecutingState(ConversationState):
     """
     Executes the confirmed user task using available tools or logic.
     Transitions to SummarizingState after execution.
     """
-
-    def __init__(self):
-        self.prompt_builder = PromptBuilder()
 
     def respond(self, engine, user_input):
         """
@@ -21,11 +18,17 @@ class ExecutingState(ConversationState):
         :param user_input: The user's confirmed instruction.
         :return: A simulated response indicating task execution.
         """
-        # Generate a task-specific prompt
-        state_name = self.__class__.__name__
-        prompt = self.prompt_builder.build_prompt(state_name, user_input, engine.preferences)
+        # Use new Builder + Template Method–based system to construct prompt
+        prompt = render_prompt(
+            prompt_type="executing",
+            user_input=user_input,
+            context=engine.preferences.get("context", ""),
+            tool_output=engine.preferences.get("tool_output", ""),
+            tone=engine.preferences.get("tone", ""),
+            persona=engine.preferences.get("persona", "")
+        )
 
-        # Simulate execution (in a real system this could trigger tools or external calls)
+        # Simulate execution (e.g., call tools, APIs, etc.)
         result = f"Executing task: {prompt}"
 
         # Transition to next state

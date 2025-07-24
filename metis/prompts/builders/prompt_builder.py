@@ -26,8 +26,8 @@ class PromptBuilder:
         self.format_style = format_style
 
     def build(self, session, user_input: str) -> str:
-        user_id = session.get("user_id", "unknown")
-        history = session.get("history", [])
+        user_id = getattr(session, "user_id", "unknown")
+        history = getattr(session, "history", [])
         user_input = self._sanitize(user_input)
 
         # Infer task type

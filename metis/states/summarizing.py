@@ -1,16 +1,13 @@
 # states/summarizing.py
 
 from metis.states.base_state import ConversationState
-from metis.prompts.prompt_builder import PromptBuilder
+from metis.services.prompt_service import render_prompt  # ✅ New import
 
 class SummarizingState(ConversationState):
     """
     Summarizes the recent interaction or outcome.
     Resets the flow back to GreetingState for a new turn.
     """
-
-    def __init__(self):
-        self.prompt_builder = PromptBuilder()
 
     def respond(self, engine, user_input):
         """
@@ -22,8 +19,15 @@ class SummarizingState(ConversationState):
         """
         from metis.states.greeting import GreetingState  # ✅ Local import to avoid circular dependency
 
-        state_name = self.__class__.__name__
-        prompt = self.prompt_builder.build_prompt(state_name, user_input, engine.preferences)
+        # Use the new Builder + Template Method–based prompt rendering
+        prompt = render_prompt(
+            prompt_type="summarize",
+            user_input=user_input,
+            context=engine.preferences.get("context", ""),
+            tool_output=engine.preferences.get("tool_output", ""),
+            tone=engine.preferences.get("tone", ""),
+            persona=engine.preferences.get("persona", "")
+        )
 
         engine.set_state(GreetingState())
         return f"Summary: {prompt}"

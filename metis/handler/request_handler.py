@@ -1,11 +1,12 @@
 from metis.components.session_manager import SessionManager
 from metis.components.tool_executor import ToolExecutor
-from metis.prompts.prompt_builder import PromptBuilder
+from metis.prompts.builders.prompt_builder import PromptBuilder
 from metis.policy.rate_limit import RateLimitPolicy
 from metis.policy.auth import AuthPolicy
 from metis.conversation_engine import ConversationEngine
 from metis.memory.manager import MemoryManager
 from metis.exceptions import ToolExecutionError
+from metis.services.prompt_service import render_prompt  # NEW: imports new prompt logic
 
 class RequestHandler:
     def __init__(self, strategy=None, policy=None, tool_executor=None, memory_manager=None):
@@ -44,8 +45,23 @@ class RequestHandler:
             except Exception as e:
                 raise ToolExecutionError(str(e))
 
-        # Get response from the active state
-        response = engine.respond(user_input)
+        # Determine if we should use the new prompt rendering system
+        state = getattr(session, "state", "")
+        if state in ["SummarizingState", "PlanningState", "ClarifyingState", "CritiqueState"]:
+            # Use the new Builder + Template Method pattern
+            prompt_text = render_prompt(
+                prompt_type=state.replace("State", "").lower(),
+                user_input=user_input,
+                context=getattr(session, "context", ""),
+                tool_output=getattr(session, "tool_output", ""),
+                tone=getattr(session, "tone", ""),
+                persona=getattr(session, "persona", "")
+            )
+            response = engine.respond(prompt_text)
+        else:
+            # Fallback to legacy prompt builder
+            prompt = self.prompt_builder.build(session, user_input)
+            response = engine.respond(prompt)
 
         # Save updated session state
         self.session_manager.save(user_id, session)
