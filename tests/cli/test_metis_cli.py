@@ -3,13 +3,15 @@ import sys
 import os
 import pytest
 
-# Path to the CLI script
 CLI_PATH = os.path.join("metis", "tools", "metis_cli.py")
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 @pytest.mark.parametrize("args,expect", [
     (["prompt", "--type", "summarize", "--input", "Summarize this message"], "Summarize this message"),
     (["prompt", "--type", "plan", "--input", "Plan my project", "--context", "Week schedule"], "Plan my project"),
 ])
+
+
 def test_prompt_cli_invokes_successfully(args, expect):
     """
     Test that the CLI 'prompt' subcommand executes successfully and returns output
