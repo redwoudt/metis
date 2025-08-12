@@ -6,6 +6,7 @@ import pytest
 CLI_PATH = os.path.join("metis", "tools", "metis_cli.py")
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
+
 @pytest.mark.parametrize("args,expect", [
     (["prompt", "--type", "summarize", "--input", "Summarize this message"], "Summarize this message"),
     (["prompt", "--type", "plan", "--input", "Plan my project", "--context", "Week schedule"], "Plan my project"),

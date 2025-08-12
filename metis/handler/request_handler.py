@@ -11,7 +11,6 @@ from metis.handler.model_router import ModelRouter
 from metis.dsl import interpret_prompt_dsl
 import re
 
-
 class RequestHandler:
     def __init__(
         self,

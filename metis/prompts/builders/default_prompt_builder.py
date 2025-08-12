@@ -6,6 +6,7 @@ Follows the Builder pattern to enable fluent prompt assembly.
 from metis.prompts.prompt import Prompt
 from metis.dsl import interpret_prompt_dsl, PromptContext
 
+
 class DefaultPromptBuilder:
     """
     A flexible prompt builder that assembles a Prompt object step-by-step.

@@ -7,6 +7,7 @@ from metis.prompts.prompt import Prompt
 from metis.prompts.builders.default_prompt_builder import DefaultPromptBuilder
 from metis.dsl import interpret_prompt_dsl, PromptContext
 
+
 class OpenAIPromptBuilder(DefaultPromptBuilder):
     """
     A builder that constructs prompts using OpenAI-style roles and formatting.
@@ -30,6 +31,7 @@ class OpenAIPromptBuilder(DefaultPromptBuilder):
                 system_parts.append(f"Context: {prompt.context}")
             if prompt.tool_output:
                 system_parts.append(f"Tools: {prompt.tool_output}")
+
             system_message = "\n".join(system_parts)
 
             # Assemble OpenAI format
@@ -38,6 +40,7 @@ class OpenAIPromptBuilder(DefaultPromptBuilder):
                 {"role": "user", "content": prompt.user_input or ""}
             ]
             return messages
+
         prompt.render = openai_render
         return prompt
 
@@ -55,6 +58,5 @@ class OpenAIPromptBuilder(DefaultPromptBuilder):
     def build(self) -> Prompt:
         # Build the base prompt using parent builder logic
         prompt = super().build()
-
         # Patch the prompt's render method to return OpenAI-style message dict
         return self._patch_openai_render(prompt)

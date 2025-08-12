@@ -9,6 +9,7 @@ memory = MemoryManager()
 engine = ConversationEngine()
 handler = RequestHandler()  # Allow injecting engine manually if needed
 
+
 def main():
     # Set up the CLI parser with subcommands
     parser = argparse.ArgumentParser(description="Metis CLI - Chat or Prompt Generation")
