@@ -4,6 +4,7 @@ Follows the Builder pattern to enable fluent prompt assembly.
 """
 
 from metis.prompts.prompt import Prompt
+from metis.dsl import interpret_prompt_dsl, PromptContext
 
 class DefaultPromptBuilder:
     """
@@ -39,6 +40,52 @@ class DefaultPromptBuilder:
         # Store the user's current input or question
         self._prompt.user_input = user_input
         return self
+
+    def build_from_dsl(self, dsl_text: str) -> Prompt:
+        """
+        Parse [key: value] prompt blocks using the DSL interpreter and populate the Prompt.
+        This is non-breaking: existing callers can still use the fluent methods.
+        """
+        ctx: PromptContext = interpret_prompt_dsl(dsl_text)
+        return self.build_with_context(ctx)
+
+    def build_with_context(self, ctx: PromptContext) -> Prompt:
+        """
+        Populate the Prompt from a structured context (persona, task, length, format, tone, source).
+        Subclasses/builders for specific providers can override this to map fields differently.
+        """
+        # Persona and tone (set independently if only one is present)
+        if ctx.get("tone") is not None:
+            self._prompt.tone = ctx["tone"]
+        if ctx.get("persona") is not None:
+            self._prompt.persona = ctx["persona"]
+
+        # Task
+        if ctx.get("task") is not None:
+            self._prompt.task = ctx["task"]
+
+        # Encode remaining context fields into the prompt context text block
+        extras = []
+        if ctx.get("source"):
+            extras.append(f"Source: {ctx['source']}")
+        if ctx.get("length"):
+            extras.append(f"Length: {ctx['length']}")
+        if ctx.get("format"):
+            extras.append(f"Format: {ctx['format']}")
+        if ctx.get("tone") and not self._prompt.tone:
+            # If tone was not handled above for any reason, keep it in context for visibility
+            extras.append(f"Tone: {ctx['tone']}")
+        if ctx.get("persona") and not self._prompt.persona:
+            extras.append(f"Persona: {ctx['persona']}")
+
+        if extras:
+            suffix = "\n".join(extras)
+            if getattr(self._prompt, "context", None):
+                self._prompt.context = f"{self._prompt.context}\n{suffix}"
+            else:
+                self._prompt.context = suffix
+
+        return self._prompt
 
     def build(self) -> Prompt:
         # Return the fully assembled prompt object

@@ -2,6 +2,7 @@ import argparse
 from metis.handler import RequestHandler
 from metis.memory.manager import MemoryManager
 from metis.conversation_engine import ConversationEngine
+from metis.dsl import interpret_prompt_dsl
 
 # Optional memory manager to demonstrate snapshot/restore
 memory = MemoryManager()
@@ -30,6 +31,11 @@ def main():
     prompt_parser.add_argument("--tool_output", default="", help="Optional tool-generated output")
     prompt_parser.add_argument("--tone", default="", help="Tone to apply to the assistant")
     prompt_parser.add_argument("--persona", default="", help="Persona for assistant behavior")
+    prompt_parser.add_argument("--dsl", default="", help="Optional DSL [key: value] blocks to merge into the prompt")
+
+    # --- DSL Subcommand ---
+    dsl_parser = subparsers.add_parser("dsl", help="Interpret prompt DSL blocks")
+    dsl_parser.add_argument("--input", required=True, help="DSL text to interpret, e.g. [persona: Analyst][task: Summarize]")
 
     args = parser.parse_args()
 
@@ -57,8 +63,47 @@ def main():
         print("\nResponse:")
         print(response)
 
+    elif args.command == "dsl":
+        # Interpret DSL and print context as JSON
+        import json
+        ctx = interpret_prompt_dsl(args.input)
+        print(json.dumps(ctx))
+
     elif args.command == "prompt":
         # Generate a standalone structured prompt using Builder/Template
+
+        # If a DSL string was provided, merge its fields into the explicit args
+        if args.dsl:
+            ctx = interpret_prompt_dsl(args.dsl)
+            # Map persona/tone directly
+            if ctx.get("persona"):
+                args.persona = ctx["persona"]
+            if ctx.get("tone"):
+                args.tone = ctx["tone"]
+            # Try to map DSL task into our --type if compatible
+            task_map = {
+                "summarize": "summarize",
+                "summary": "summarize",
+                "translate": "clarify",   # choose closest supported type
+                "plan": "plan",
+                "planning": "plan",
+                "critique": "critique",
+            }
+            if ctx.get("task"):
+                dsl_task = ctx["task"].strip().lower()
+                if dsl_task in task_map:
+                    args.type = task_map[dsl_task]
+            # Append remaining fields into context so templates can render them
+            extras = []
+            if ctx.get("source"):
+                extras.append(f"Source: {ctx['source']}")
+            if ctx.get("length"):
+                extras.append(f"Length: {ctx['length']}")
+            if ctx.get("format"):
+                extras.append(f"Format: {ctx['format']}")
+            if extras:
+                args.context = (args.context + ("\n" if args.context else "") + "\n".join(extras)).strip()
+
         from metis.services.prompt_service import render_prompt
 
         try:

@@ -19,6 +19,7 @@ Expansion Ideas:
 import html
 import re
 from metis.prompts.prompt import Prompt
+from metis.dsl import interpret_prompt_dsl, PromptContext
 
 
 class PromptBuilder:
@@ -50,6 +51,21 @@ class PromptBuilder:
         else:
             return self._apply_task_template(task, header, context, user_input)
 
+    def build_from_dsl(self, session, dsl_text: str) -> str:
+        """
+        Parse [key: value] blocks using the DSL interpreter and return a formatted prompt string.
+        Does not break existing callers that use plain text.
+        """
+        ctx: PromptContext = interpret_prompt_dsl(dsl_text)
+        return self._apply_context_template(session, ctx)
+
+    def build_prompt_from_dsl(self, session, dsl_text: str) -> Prompt:
+        """
+        Convenience: build a Prompt object directly from DSL input.
+        """
+        prompt_str = self.build_from_dsl(session, dsl_text)
+        return Prompt(user_input=prompt_str)
+
     def build_prompt(self, session, user_input: str) -> Prompt:
         """
         Converts legacy string-based prompt into a Prompt object for compatibility with new system.
@@ -72,6 +88,38 @@ class PromptBuilder:
         elif "plan" in text:
             return "planning"
         return "general"
+
+    def _apply_context_template(self, session, ctx: PromptContext) -> str:
+        user_id = getattr(session, "user_id", "unknown")
+        history = getattr(session, "history", [])
+
+        header = f"[Session: {user_id}]"
+        if history:
+            formatted_history = "\n".join(
+                f"User: {self._sanitize(prompt)}\nSystem: {self._sanitize(response)}"
+                for prompt, response in history[-3:]
+            )
+            context = f"\n\nPrevious interactions:\n{formatted_history}\n"
+        else:
+            context = ""
+
+        # Map DSL fields into a friendly body similar to existing templates
+        parts = []
+        if ctx.get("persona"):
+            parts.append(f"Persona: {self._sanitize(ctx['persona'])}")
+        if ctx.get("tone"):
+            parts.append(f"Tone: {self._sanitize(ctx['tone'])}")
+        if ctx.get("task"):
+            parts.append(f"Task: {self._sanitize(ctx['task'])}")
+        if ctx.get("source"):
+            parts.append(f"Source: {self._sanitize(ctx['source'])}")
+        if ctx.get("length"):
+            parts.append(f"Length: {self._sanitize(ctx['length'])}")
+        if ctx.get("format"):
+            parts.append(f"Format: {self._sanitize(ctx['format'])}")
+
+        body = "\n".join(parts) if parts else "Current input:"
+        return f"{header}{context}\n\n{body}"
 
     def _apply_task_template(self, task, header, context, user_input):
         if task == "summarization":
