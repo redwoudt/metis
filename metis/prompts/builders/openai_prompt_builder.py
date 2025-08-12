@@ -5,6 +5,8 @@ Overrides the render method to match system/user style.
 
 from metis.prompts.prompt import Prompt
 from metis.prompts.builders.default_prompt_builder import DefaultPromptBuilder
+from metis.dsl import interpret_prompt_dsl, PromptContext
+
 
 class OpenAIPromptBuilder(DefaultPromptBuilder):
     """
@@ -12,14 +14,11 @@ class OpenAIPromptBuilder(DefaultPromptBuilder):
     Inherits the default builder but overrides the final rendering behavior.
     """
 
-    def build(self) -> Prompt:
-        # Build the base prompt using parent builder logic
-        prompt = super().build()
-
-        # Override the render method with OpenAI message structure
+    def _patch_openai_render(self, prompt: Prompt) -> Prompt:
+        """
+        Replace the prompt.render with an OpenAI-style messages renderer.
+        """
         def openai_render():
-            sections = []
-
             # System message includes tone and persona plus task and context
             system_parts = []
             if prompt.tone:
@@ -40,9 +39,24 @@ class OpenAIPromptBuilder(DefaultPromptBuilder):
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt.user_input or ""}
             ]
-
             return messages
 
-        # Patch the prompt's render method to return OpenAI-style message dict
         prompt.render = openai_render
         return prompt
+
+    def build_from_dsl(self, dsl_text: str) -> Prompt:
+        """
+        Parse [key: value] prompt blocks with the DSL and build an OpenAI-formatted Prompt.
+        """
+        ctx: PromptContext = interpret_prompt_dsl(dsl_text)
+        # Let DefaultPromptBuilder map ctx → Prompt fields
+        super().build_with_context(ctx)
+        # Now return a Prompt with OpenAI-style render function
+        prompt = super().build()
+        return self._patch_openai_render(prompt)
+
+    def build(self) -> Prompt:
+        # Build the base prompt using parent builder logic
+        prompt = super().build()
+        # Patch the prompt's render method to return OpenAI-style message dict
+        return self._patch_openai_render(prompt)

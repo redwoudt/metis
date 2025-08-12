@@ -3,7 +3,7 @@
 # Create and activate virtual environment
 env:
 	python3 -m venv .venv
-	. .venv/bin/activate || source .venv/bin/activate
+	source .venv/bin/activate
 
 # Install runtime and development dependencies
 install:
