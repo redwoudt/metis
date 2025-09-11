@@ -1,0 +1,40 @@
+"""
+Model Factory for Metis
+------------------------
+Centralizes creation and configuration of models based on logical roles.
+Integrates with Singleton cache for reuse and wraps models with a Proxy
+to enforce operational policies.
+"""
+
+from typing import Any, Callable, Dict
+from singleton_cache import get_or_set
+from model_proxy import ModelProxy
+
+class ModelFactory:
+    # Initialize the factory with a registry mapping roles to model configurations
+    def __init__(self, registry: Dict[str, Dict[str, Any]]):
+        self.registry = registry
+
+    # Retrieve a model for a given role using the config registry.
+    # Applies singleton caching to prevent duplicate model instantiations.
+    # Wraps the result with a Proxy for enforcing operational policies.
+    def get_model(self, role: str) -> Any:
+        config = self.registry.get(role)
+        if config is None:
+            raise ValueError(f"No model configuration found for role: {role}")
+
+        # Vendor-specific instantiation logic
+        def create_model():
+            vendor = config.get("vendor")
+            if vendor == "openai":
+                from openai_model import OpenAIModel
+                return OpenAIModel(config)
+            elif vendor == "huggingface":
+                from huggingface_model import HuggingFaceModel
+                return HuggingFaceModel(config)
+            else:
+                raise ValueError(f"Unsupported vendor: {vendor}")
+
+        key = tuple(sorted(config.items()))
+        model_instance = get_or_set(key, create_model)
+        return ModelProxy(model_instance, config.get("policy", {}))
