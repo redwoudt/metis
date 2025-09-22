@@ -8,9 +8,11 @@ class ConversationEngine:
     Manages conversation state transitions and supports memory snapshot/restore.
     """
     def __init__(self):
+
         self.state = GreetingState()  # Set initial state to Greeting
         self.history = []  # Tracks the conversation log
         self.preferences = {"tone": "friendly"}  # Stores user preferences
+        self.model = None
 
     def set_state(self, new_state):
         """
@@ -40,3 +42,17 @@ class ConversationEngine:
         Overwrites current internal state safely.
         """
         self.__dict__ = snapshot.get_state()
+
+    def get_model(self):
+        """
+        Return the underlying model instance if it was injected by the current state.
+        Useful for testing and debugging.
+        """
+        return self.model
+
+    def set_model(self, model):
+        """
+        Injects the model into the engine for later reference.
+        This enables the current conversation state to access the model during response generation.
+        """
+        self.model = model

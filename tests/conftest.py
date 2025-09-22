@@ -1,6 +1,12 @@
 # conftest.py
 import os
 import pytest
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s:%(lineno)d %(message)s",
+)
 
 SESSION_FILE = "metis/sessions.pkl"  # Adjust path if necessary
 

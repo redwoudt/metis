@@ -9,6 +9,9 @@ class SummarizingState(ConversationState):
     Resets the flow back to GreetingState for a new turn.
     """
 
+    def __init__(self):
+        super().__init__()
+
     def respond(self, engine, user_input):
         """
         Provide a summary and loop back to GreetingState.

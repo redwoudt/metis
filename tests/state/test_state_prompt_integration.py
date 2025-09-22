@@ -15,6 +15,7 @@ class DummyEngine:
             "persona": "Test Persona"
         }
         self.state_set = None
+        self.model = None
 
     def set_state(self, new_state):
         self.state_set = new_state

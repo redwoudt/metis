@@ -10,6 +10,9 @@ class GreetingState(ConversationState):
     Greets the user and transitions to ClarifyingState.
     """
 
+    def __init__(self):
+        super().__init__()
+
     def respond(self, engine, user_input):
         """
         Respond with a greeting and move to ClarifyingState.

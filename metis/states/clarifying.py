@@ -9,6 +9,8 @@ class ClarifyingState(ConversationState):
     A state that confirms or refines the user's intent before taking action.
     Transitions to ExecutingState once clarification is complete.
     """
+    def __init__(self):
+        super().__init__()
 
     def respond(self, engine, user_input):
         """

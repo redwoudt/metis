@@ -1,11 +1,12 @@
-# tests/integration/test_prompt_flow_with_dsl.py
-
 import pytest
+from tests.test_utils import setup_test_registry
 
-def test_dsl_full_prompt_flow_via_request_handler():
+
+def test_dsl_full_prompt_flow_via_request_handler(monkeypatch):
     """
     End-to-end: DSL in user_input -> RequestHandler -> routed state/model -> engine.respond.
     """
+    setup_test_registry(monkeypatch)
     from metis.handler.request_handler import RequestHandler
 
     handler = RequestHandler()

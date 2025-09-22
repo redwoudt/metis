@@ -6,9 +6,12 @@ Integrates with Singleton cache for reuse and wraps models with a Proxy
 to enforce operational policies.
 """
 
+import logging
+logger = logging.getLogger(__name__)
+
 from typing import Any, Callable, Dict
-from singleton_cache import get_or_set
-from model_proxy import ModelProxy
+from .singleton_cache import get_or_set
+from .model_proxy import ModelProxy
 
 class ModelFactory:
     # Initialize the factory with a registry mapping roles to model configurations
@@ -19,6 +22,7 @@ class ModelFactory:
     # Applies singleton caching to prevent duplicate model instantiations.
     # Wraps the result with a Proxy for enforcing operational policies.
     def get_model(self, role: str) -> Any:
+        logger.debug(f"[ModelFactory] Getting model for role: {role}")
         config = self.registry.get(role)
         if config is None:
             raise ValueError(f"No model configuration found for role: {role}")
@@ -26,15 +30,21 @@ class ModelFactory:
         # Vendor-specific instantiation logic
         def create_model():
             vendor = config.get("vendor")
+            logger.warning(f"[ModelFactory] Vendor '{vendor}' requested for role '{role}' with config: {config}")
+
             if vendor == "openai":
                 from openai_model import OpenAIModel
                 return OpenAIModel(config)
             elif vendor == "huggingface":
                 from huggingface_model import HuggingFaceModel
                 return HuggingFaceModel(config)
+            elif vendor == "mock":
+                from tests.test_utils import MockModel
+                return MockModel(config)
             else:
+                logger.error(f"[ModelFactory] Unsupported vendor: {vendor}")
                 raise ValueError(f"Unsupported vendor: {vendor}")
 
         key = tuple(sorted(config.items()))
         model_instance = get_or_set(key, create_model)
-        return ModelProxy(model_instance, config.get("policy", {}))
+        return ModelProxy(model_instance, config.get("policies", {}))

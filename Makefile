@@ -1,4 +1,6 @@
 # Makefile for Metis GenAI
+clean:
+	rm -rf __pycache__ 
 
 # Create and activate virtual environment
 env:

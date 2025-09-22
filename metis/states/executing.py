@@ -10,6 +10,9 @@ class ExecutingState(ConversationState):
     Transitions to SummarizingState after execution.
     """
 
+    def __init__(self):
+        super().__init__()
+
     def respond(self, engine, user_input):
         """
         Build an execution-ready prompt, simulate execution, and move to summarization.
