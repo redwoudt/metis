@@ -4,7 +4,7 @@ import pytest
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(levelname)s %(name)s:%(lineno)d %(message)s",
 )
 

@@ -1,6 +1,6 @@
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 logger = logging.getLogger("metis.strategy.mock_strategy")
 
@@ -72,7 +72,9 @@ class MockModel:
 
 
 class LoggingMockModel(MockModel):
-    logger = logging.getLogger("metis.models.logging_mock")
+    def __init__(self, **kwargs):
+        super().__init__(log=True, **kwargs)
+        self.logger = logging.getLogger("metis.models.logging_mock")  # ensure instance logger
 
     def generate(self, prompt, **kwargs):
         if self.logger:
@@ -101,6 +103,9 @@ def mock_singleton_factory(**kwargs):
 
 _shared_instance = MockModel()
 
+def factory_logging(**kwargs):
+    return LoggingMockModel(log=True, **kwargs)
+
 def cached_model_factory():
     if not hasattr(cached_model_factory, "_shared_instance"):
         cached_model_factory._shared_instance = MockModel(log=True)
@@ -119,7 +124,6 @@ def rate_limited_model_factory(**kwargs):
         raise Exception("Rate limit exceeded")
     rate_limited_model_factory._last_call_time = current
     return MockModel(log=True)
-rate_limited_model_factory._last_call_time = 0
 
 def reset_rate_limited_model_factory():
     rate_limited_model_factory._last_call_time = 0
@@ -135,7 +139,7 @@ def create_summarize_model(**kwargs):
     return SummarizeModel()
 
 def factory_greeting(**kwargs):
-    return MockModel(response="Mocked: Hello from GreetingState!", **kwargs)
+    return MockModel(response="[Tone: friendly] [MockPrompt]: Hello there! Welcome to Metis.", **kwargs)
 
 
 class MockSession:

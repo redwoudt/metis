@@ -93,8 +93,11 @@ class RequestHandler:
 
         # Determine state from session, DSL, or strategy
         state = getattr(session, "state", "") or ""
+        logger.info(f"[handle_prompt] State from session: '{state}'")
 
         if not state:
+            logger.info(f"[handle_prompt] State nothing from session: '{state}'")
+
             if dsl_ctx.get("task"):
                 task_lc = dsl_ctx["task"].strip().lower()
                 task_to_state = {
@@ -108,26 +111,52 @@ class RequestHandler:
                     "review": "CritiqueState",
                 }
                 state = task_to_state.get(task_lc, "")
+                logger.info(f"[handle_prompt] State from task_lc: '{state}'")
+
             elif self.strategy:
                 state = self.strategy.determine_state_name(user_input, dsl_ctx)
+                logger.info(f"[handle_prompt] State from strategy: '{state}'")
+                # Persist the resolved state into the session so subsequent calls see it
+                if state:
+                    setattr(session, "state", state)
+                    logger.debug(f"[handle_prompt] Saved state '{state}' to session")
+
         logger.info(f"[handle_prompt] State determined: '{state}'")
 
         # Use role-based model selection via Factory → Singleton → Proxy
-        model_role = dsl_ctx.get("task", "analysis").lower()
-        logger.info(f"[handle_prompt] Model role: '{model_role}'")
+        # Map State class names like 'SummarizingState' -> role names used in the registry
+        state_to_role = {
+            "SummarizingState": "summarize",
+            "ClarifyingState": "clarify",
+            "GreetingState": "greeting",
+            "ExecutingState": "executing",
+        }
+        # Determine model role
+        if dsl_ctx.get("task"):
+            model_role = dsl_ctx["task"].strip().lower()
+        elif isinstance(state, str):
+            model_role = state.replace("State", "").lower()
+        elif hasattr(state, "__class__"):
+            model_role = state.__class__.__name__.replace("State", "").lower()
+        else:
+            model_role = "analysis"
+        logger.debug(
+            f"[handle_prompt] Resolved model_role='{model_role}' (state='{state}', dsl_task='{dsl_ctx.get('task')}')")
         selected_model = model_factory.get_model(model_role)
         logger.debug(f"[handle_prompt] Selected model: {selected_model}")
         engine.set_model(selected_model)
 
         logger.info(f"[handle_prompt] Engine responding using state: {state or 'default'}")
-        if state in ["SummarizingState", "PlanningState", "ClarifyingState", "CritiqueState"]:
+        if state in ["SummarizingState", "ClarifyingState", "GreetingState", "ExecutingState"]:
+            logger.debug(f"[handle_prompt] Engine responding using state: {state or 'default'} in special condition")
+
             state_to_prompt_type = {
                 "SummarizingState": "summarize",
-                "PlanningState": "plan",
                 "ClarifyingState": "clarify",
-                "CritiqueState": "critique",
+                "GreetingState": "greeting",
+                "ExecutingState": "executing",
             }
-            prompt_type = state_to_prompt_type.get(state, state.replace("State", "").lower())
+            prompt_type = state_to_prompt_type.get(state, state.replace("State", "").lower()) if isinstance(state, str) else state.__class__.__name__.replace("State", "").lower()
             prompt_text = render_prompt(
                 prompt_type=prompt_type,
                 user_input=user_input,
@@ -138,6 +167,8 @@ class RequestHandler:
             )
             response = engine.respond(prompt_text)
         else:
+            logger.debug(f"[handle_prompt] Engine responding using state: {state or 'default'} in prompt_builder")
+
             prompt = self.prompt_builder.build(session, user_input)
             response = engine.respond(prompt)
 

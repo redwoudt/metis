@@ -11,13 +11,16 @@ from metis.prompts.templates.clarifying_prompt import ClarifyingPrompt
 from metis.prompts.templates.critique_prompt import CritiquePrompt
 from metis.prompts.prompt import Prompt
 
+import logging
+logger = logging.getLogger(__name__)
+
 # Optional: support different prompt strategies from one place
 TEMPLATE_MAP = {
     "greeting": GreetingPrompt,
     "executing": ExecutingPrompt,
     "summarize": SummarizationPrompt,
     "plan": PlanningPrompt,
-    "clarify": ClarifyingPrompt,
+    "clarifying": ClarifyingPrompt,
     "critique": CritiquePrompt,
 }
 
@@ -44,7 +47,9 @@ def generate_prompt(prompt_type: str, user_input: str, context: str = "", tool_o
     )
 
     # Build and return the prompt object
-    return  template.build_prompt(user_input)
+    prompt_obj = template.build_prompt(user_input)
+    logger.debug(f"[generate_prompt] Created prompt: {template}")
+    return prompt_obj
 
 def render_prompt(prompt_type: str, user_input: str, context: str = "", tool_output: str = "", tone: str = "", persona: str = "") -> str:
     """
@@ -58,7 +63,9 @@ def render_prompt(prompt_type: str, user_input: str, context: str = "", tool_out
         tone=tone,
         persona=persona
     )
-    return prompt.render()
+    rendered = prompt.render()
+    logger.debug(f"[render_prompt] Final rendered prompt: {rendered}")
+    return rendered
 
 class PromptFormatter:
     """

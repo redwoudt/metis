@@ -1,3 +1,6 @@
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Defines the BasePromptTemplate abstract class using the Template Method pattern.
 Each subclass provides specific prompt task logic (e.g., summarization, planning).
@@ -14,6 +17,8 @@ class BasePromptTemplate(ABC):
     """
 
     def __init__(self, tone="Neutral", persona="Helpful Assistant", context="", tool_output=""):
+        logger.debug("[BasePromptTemplate] __init__")
+
         self.prompt = Prompt()
         self.tone = tone
         self.persona = persona
@@ -24,11 +29,22 @@ class BasePromptTemplate(ABC):
         """
         Template method: builds the prompt in a fixed sequence of steps.
         """
+        logger.debug("[BasePromptTemplate] Building prompt: setting tone and persona")
         self.set_tone_and_persona()
+
+        logger.debug("[BasePromptTemplate] Adding task instruction")
         self.add_task_instruction()
+
+        logger.debug("[BasePromptTemplate] Injecting context")
         self.inject_context()
+
+        logger.debug("[BasePromptTemplate] Injecting tool output")
         self.inject_tool_output()
+
+        logger.debug(f"[BasePromptTemplate] Setting user input: {user_input}")
         self.set_user_input(user_input)
+
+        logger.debug(f"[BasePromptTemplate] Final prompt constructed: {self.prompt}")
         return self.prompt
 
     def set_tone_and_persona(self):
