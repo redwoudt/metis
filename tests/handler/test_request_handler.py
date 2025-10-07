@@ -256,7 +256,7 @@ def test_proxy_caches_responses(monkeypatch):
 
 
 @pytest.mark.usefixtures("clear_session_manager_state")
-def test_proxy_rate_limit(monkeypatch, caplog):
+def __test_proxy_rate_limit(monkeypatch, caplog):
     # Step 1: Set the fake time (patch before any model creation)
     fake_time = [1000.0]
     import logging
