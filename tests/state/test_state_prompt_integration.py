@@ -1,9 +1,14 @@
+import logging
+
 import pytest
 from unittest.mock import MagicMock
 
 from metis.states.greeting import GreetingState
 from metis.states.executing import ExecutingState
 from metis.states.summarizing import SummarizingState
+
+
+logger = logging.getLogger(__name__)
 
 
 class DummyEngine:
@@ -15,11 +20,15 @@ class DummyEngine:
             "persona": "Test Persona"
         }
         self.state_set = None
+        self.model = None
+        logger.debug("[DummyEngine] Initialized with default preferences")
 
     def set_state(self, new_state):
         self.state_set = new_state
+        logger.debug(f"[DummyEngine] State set to: {type(new_state).__name__}")
 
     def respond(self, prompt):
+        logger.debug(f"[DummyEngine] Respond called with prompt: {prompt}")
         return f"[DUMMY RESPONSE] {prompt}"
 
 

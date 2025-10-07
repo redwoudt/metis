@@ -28,10 +28,15 @@ class SessionManager:
     def _load_sessions(self):
         """
         Load session data from the pickle file if it exists, else return an empty dict.
+        Handles corrupted files gracefully during tests or CLI runs.
         """
         if os.path.exists(self.file_path):
-            with open(self.file_path, "rb") as f:
-                return pickle.load(f)
+            try:
+                with open(self.file_path, "rb") as f:
+                    return pickle.load(f)
+            except (EOFError, pickle.UnpicklingError):
+                print(f"Warning: Session file {self.file_path} is corrupted or empty. Starting with fresh memory.")
+                return {}
         return {}
 
     def _save_sessions(self):

@@ -20,6 +20,9 @@ import html
 import re
 from metis.prompts.prompt import Prompt
 from metis.dsl import interpret_prompt_dsl, PromptContext
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PromptBuilder:
@@ -33,6 +36,10 @@ class PromptBuilder:
 
         # Infer task type
         task = self._infer_task_type(user_input)
+
+        logger.info(f"[PromptBuilder] build() called for user_id={user_id}, task={task}")
+        logger.info(f"[PromptBuilder] format_style={self.format_style}")
+        logger.info(f"[PromptBuilder] user_input={user_input}")
 
         # Format session header and history
         header = f"[Session: {user_id}]"
@@ -56,6 +63,7 @@ class PromptBuilder:
         Parse [key: value] blocks using the DSL interpreter and return a formatted prompt string.
         Does not break existing callers that use plain text.
         """
+        logger.info(f"[PromptBuilder] build_from_dsl() called with dsl_text={dsl_text}")
         ctx: PromptContext = interpret_prompt_dsl(dsl_text)
         return self._apply_context_template(session, ctx)
 
@@ -70,6 +78,7 @@ class PromptBuilder:
         """
         Converts legacy string-based prompt into a Prompt object for compatibility with new system.
         """
+        logger.info(f"[PromptBuilder] build_prompt() called for session={getattr(session, 'user_id', 'unknown')}")
         prompt_str = self.build(session, user_input)
         return Prompt(user_input=prompt_str)
 
@@ -82,14 +91,20 @@ class PromptBuilder:
     def _infer_task_type(self, user_input: str) -> str:
         text = user_input.lower()
         if "summarize" in text:
-            return "summarization"
-        elif "explain" in text:
-            return "explanation"
-        elif "plan" in text:
-            return "planning"
-        return "general"
+            task = "summarization"
+        elif "clarify" in text or "clarification" in text:
+            task = "clarifying"
+        elif "execute" in text or "execution" in text:
+            task = "executing"
+        elif any(word in text for word in ["hi", "hello", "hey", "greetings"]):
+            task = "greeting"
+        else:
+            task = "general"
+        logger.info(f"[PromptBuilder] _infer_task_type() determined task={task}")
+        return task
 
     def _apply_context_template(self, session, ctx: PromptContext) -> str:
+        logger.info(f"[PromptBuilder] _apply_context_template() with context fields: {ctx}")
         user_id = getattr(session, "user_id", "unknown")
         history = getattr(session, "history", [])
 
@@ -122,15 +137,20 @@ class PromptBuilder:
         return f"{header}{context}\n\n{body}"
 
     def _apply_task_template(self, task, header, context, user_input):
+        logger.info(f"[PromptBuilder] _apply_task_template() using task={task}")
+        logger.info(f"[PromptBuilder] header={header}, context={context}, user_input={user_input}")
         if task == "summarization":
             return f"{header}{context}\n\nTask: Summarize the following input.\n{user_input}"
-        elif task == "explanation":
-            return f"{header}{context}\n\nTask: Provide a clear explanation for:\n{user_input}"
-        elif task == "planning":
-            return f"{header}{context}\n\nTask: Create a detailed plan based on:\n{user_input}"
+        elif task == "clarifying":
+            return f"{header}{context}\n\nTask: Clarify the following statement or request:\n{user_input}"
+        elif task == "executing":
+            return f"{header}{context}\n\nTask: Execute the following instruction or command:\n{user_input}"
+        elif task == "greeting":
+            return f"{header}{context}\n\nTask: Generate a friendly greeting message to initiate the conversation.\n{user_input}"
         return f"{header}{context}\n\nCurrent input:\n{user_input}"
 
     def _format_json(self, user_id, history, user_input, task):
+        logger.info(f"[PromptBuilder] _format_json() called for user_id={user_id}, task={task}")
         context = [
             {"user": self._sanitize(p), "system": self._sanitize(r)}
             for p, r in history[-3:]
