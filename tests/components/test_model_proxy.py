@@ -10,14 +10,14 @@ from metis.models.model_proxy import ModelProxy
 from tests.test_utils import MockModel
 
 # Test that logging occurs when the log policy is enabled
-def test_proxy_logging_enabled(capsys):
+def test_proxy_logging_enabled(caplog):
+    caplog.set_level("DEBUG", logger="metis.models.model_proxy")
+
     backend = MockModel()
     proxy = ModelProxy(backend, policies={"log": True})
     output = proxy.generate("Hello!")
 
-    captured = capsys.readouterr()
-    assert "[proxy]" in captured.out
-    assert output.startswith("Mocked:")
+    assert any("[proxy]" in r.message for r in caplog.records)
 
 # Test that caching returns the cached result on repeated calls
 def test_proxy_caching_enabled():

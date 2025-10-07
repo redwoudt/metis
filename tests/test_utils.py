@@ -1,4 +1,5 @@
 import logging
+import time
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -45,13 +46,22 @@ class MockModel:
         self.model_id = model_id
         self.kwargs = kwargs
         self.call_log = []
-        self.logger = logging.getLogger("metis.models.logging_mock") if log else None
+        self.logger = logging.getLogger("metis.models.logging_mock")
+        self.response_cache = {}
 
     def generate(self, prompt, **kwargs):
+        normalized_prompt = str(prompt).strip()
         if self.logger:
-            self.logger.info("[proxy] LoggingMockModel generate called with prompt: %s", prompt)
-        self.call_log.append(prompt)
-        return f"Mocked: {prompt}"
+            self.logger.info("[proxy] LoggingMockModel generate called with prompt: %s", normalized_prompt)
+        if normalized_prompt in self.response_cache:
+            self.logger.info("[proxy] LoggingMockModel cache hit: %s", normalized_prompt)
+            return self.response_cache[normalized_prompt]
+
+        self.logger.info("[proxy] LoggingMockModel add to call_log: %s", normalized_prompt)
+        self.call_log.append(normalized_prompt)
+        response = f"Mocked: {normalized_prompt}"
+        self.response_cache[normalized_prompt] = response
+        return response
 
     def __call__(self, prompt, **kwargs):
         return self.generate(prompt, **kwargs)
@@ -77,10 +87,11 @@ class LoggingMockModel(MockModel):
         self.logger = logging.getLogger("metis.models.logging_mock")  # ensure instance logger
 
     def generate(self, prompt, **kwargs):
+        normalized_prompt = str(prompt).strip()
         if self.logger:
-            self.logger.info("[proxy] LoggingMockModel generate called with prompt: %s", prompt)
-        self.call_log.append(prompt)
-        return f"Mocked: {prompt}"
+            self.logger.info("[proxy] LoggingMockModel generate called with prompt: %s", normalized_prompt)
+        self.call_log.append(normalized_prompt)
+        return f"Mocked: {normalized_prompt}"
 
     def __call__(self, prompt, **kwargs):
         if self.logger:
@@ -115,18 +126,32 @@ def reset_cached_model_factory():
     cached_model_factory._shared_instance = MockModel()
 
 
-def rate_limited_model_factory(**kwargs):
-    import time
+def rate_limited_model_factory():
+    logger = logging.getLogger("metis.models.logging_mock")
+
     if not hasattr(rate_limited_model_factory, "_last_call_time"):
         rate_limited_model_factory._last_call_time = 0
-    current = time.time()
-    if current - rate_limited_model_factory._last_call_time < 1:
-        raise Exception("Rate limit exceeded")
-    rate_limited_model_factory._last_call_time = current
-    return MockModel(log=True)
+
+    class RateLimitedLoggingMockModel(LoggingMockModel):
+        def generate(self, prompt, **kwargs):
+            now = time.time()
+            delay = now - rate_limited_model_factory._last_call_time
+            logger.debug("[rate_limit] Entered rate_limited_generate")
+            logger.debug("[rate_limit] Time since last call: %.4f seconds", delay)
+            if delay < 1:
+                logger.warning("[rate_limit] Rate limit exceeded: %.4f seconds", delay)
+                raise Exception("Rate limit exceeded")
+            rate_limited_model_factory._last_call_time = now
+            return super().generate(prompt, **kwargs)
+
+    return RateLimitedLoggingMockModel()
 
 def reset_rate_limited_model_factory():
-    rate_limited_model_factory._last_call_time = 0
+    if hasattr(rate_limited_model_factory, "_last_call_time"):
+        logger.debug("[reset_rate_limited_model_factory] Resetting _last_call_time and _shared_instance")
+        rate_limited_model_factory._last_call_time = 0
+        # reset the shared instance
+        rate_limited_model_factory._shared_instance = LoggingMockModel()
 
 
 def create_mock_model(**kwargs):

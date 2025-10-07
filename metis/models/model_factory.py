@@ -27,24 +27,27 @@ class ModelFactory:
         if config is None:
             raise ValueError(f"No model configuration found for role: {role}")
 
-        # Vendor-specific instantiation logic
-        def create_model():
+        # Vendor-specific instantiation logic wrapped with ModelProxy caching
+        def create_proxy():
             vendor = config.get("vendor")
             logger.warning(f"[ModelFactory] Vendor '{vendor}' requested for role '{role}' with config: {config}")
 
             if vendor == "openai":
                 from openai_model import OpenAIModel
-                return OpenAIModel(config)
+                model_instance = OpenAIModel(config)
             elif vendor == "huggingface":
                 from huggingface_model import HuggingFaceModel
-                return HuggingFaceModel(config)
+                model_instance = HuggingFaceModel(config)
             elif vendor == "mock":
                 from tests.test_utils import MockModel
-                return MockModel(config)
+                model_instance = MockModel(config)
             else:
                 logger.error(f"[ModelFactory] Unsupported vendor: {vendor}")
                 raise ValueError(f"Unsupported vendor: {vendor}")
 
+            return ModelProxy(model_instance, config.get("policies", {}))
+
         key = tuple(sorted(config.items()))
-        model_instance = get_or_set(key, create_model)
-        return ModelProxy(model_instance, config.get("policies", {}))
+        model_proxy = get_or_set(key, create_proxy)
+        logger.debug(f"[ModelFactory] Returning cached ModelProxy for role: {role}")
+        return model_proxy

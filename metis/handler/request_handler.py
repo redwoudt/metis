@@ -144,6 +144,7 @@ class RequestHandler:
             f"[handle_prompt] Resolved model_role='{model_role}' (state='{state}', dsl_task='{dsl_ctx.get('task')}')")
         selected_model = model_factory.get_model(model_role)
         logger.debug(f"[handle_prompt] Selected model: {selected_model}")
+        logger.debug(f"[handle_prompt] Setting model on engine: {selected_model}")
         engine.set_model(selected_model)
 
         logger.info(f"[handle_prompt] Engine responding using state: {state or 'default'}")
