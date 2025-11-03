@@ -17,7 +17,8 @@ class ExecutingState(ConversationState):
 
     def respond(self, engine, user_input):
         """
-        Build an execution-ready prompt, call the model to perform the task, and move to summarization.
+        Build an execution-ready prompt, call the model (through the bridge),
+        and then move to summarization.
 
         :param engine: The conversation engine (context).
         :param user_input: The user's confirmed instruction.
@@ -26,11 +27,17 @@ class ExecutingState(ConversationState):
         from metis.services.prompt_service import render_prompt
         from metis.states.summarizing import SummarizingState
 
-        logger.debug(f"[ExecutingState] Building prompt with tone='{engine.preferences.get('tone', '')}', "
-                     f"persona='{engine.preferences.get('persona', '')}', context='{engine.preferences.get('context', '')}', "
-                     f"tool_output='{engine.preferences.get('tool_output', '')}', user_input='{user_input}'")
+        logger.debug(
+            "[ExecutingState] Building prompt with tone='%s', persona='%s', context='%s', "
+            "tool_output='%s', user_input='%s'",
+            engine.preferences.get("tone", ""),
+            engine.preferences.get("persona", ""),
+            engine.preferences.get("context", ""),
+            engine.preferences.get("tool_output", ""),
+            user_input,
+        )
 
-        # Use new Builder + Template Method–based system to construct prompt
+        # Build provider-agnostic execution prompt using our prompt builder pipeline
         prompt = render_prompt(
             prompt_type="executing",
             user_input=user_input,
@@ -40,24 +47,31 @@ class ExecutingState(ConversationState):
             persona=engine.preferences.get("persona", "")
         )
 
-        logger.debug(f"[ExecutingState] Prompt constructed: {prompt}")
+        # Make sure we always have a string to send to the model
+        try:
+            rendered_prompt = prompt.render() if hasattr(prompt, "render") else str(prompt)
+        except Exception:
+            rendered_prompt = str(prompt)
 
-        # Call the model to execute the task
+        logger.debug("[ExecutingState] Prompt constructed: %s", rendered_prompt)
+
+        # Call the model through the Bridge path:
+        # ConversationEngine -> ModelManager -> Adapter.
         model_response = None
         try:
-            model = engine.get_model()
-            if hasattr(model, "generate"):
-                logger.debug("[ExecutingState] Calling model.generate")
-                model_response = model.generate(prompt)
-                logger.debug("[ExecutingState] Model response: %s", model_response)
-            elif hasattr(model, "call"):
-                logger.debug("[ExecutingState] Calling model.call")
-                model_response = model.call(prompt)
-                logger.debug("[ExecutingState] Model response: %s", model_response)
+            logger.debug("[ExecutingState] Calling engine.generate_with_model")
+            model_response = engine.generate_with_model(rendered_prompt)
+            logger.debug("[ExecutingState] Model response: %s", model_response)
         except Exception as exc:
-            logger.exception("[ExecutingState] Model call failed: %s", exc)
+            # We don't kill the flow if the provider call fails;
+            # SummarizingState should still run to close the loop.
+            logger.exception(
+                "[ExecutingState] Model call via engine.generate_with_model failed: %s",
+                exc,
+            )
 
-        # Transition to next state
+        # Move to the next phase of the conversation: summarizing what just happened
         engine.set_state(SummarizingState())
 
-        return model_response if model_response is not None else f"Executing task: {prompt}"
+        # Prefer the model output; fall back to a synthesized execution message
+        return model_response if model_response is not None else f"Executing task: {rendered_prompt}"

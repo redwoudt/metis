@@ -1,53 +1,78 @@
 """
 Model Factory for Metis
-------------------------
-Centralizes creation and configuration of models based on logical roles.
-Integrates with Singleton cache for reuse and wraps models with a Proxy
-to enforce operational policies.
+-----------------------
+
+Returns a ModelClient adapter (Adapter pattern) for a given role+config,
+wrapped in a ModelProxy for policy enforcement. The adapter is then injected
+into ModelManager (Bridge implementor).
 """
 
 import logging
-logger = logging.getLogger(__name__)
+from typing import Any, Dict, Tuple
 
-from typing import Any, Callable, Dict
 from .singleton_cache import get_or_set
 from .model_proxy import ModelProxy
+from .adapters.base import ModelClient
+from .adapters.openai_adapter import OpenAIAdapter
+from .adapters.anthropic_adapter import AnthropicAdapter
+
+logger = logging.getLogger(__name__)
+
 
 class ModelFactory:
-    # Initialize the factory with a registry mapping roles to model configurations
-    def __init__(self, registry: Dict[str, Dict[str, Any]]):
-        self.registry = registry
+    @staticmethod
+    def for_role(role: str, config: Dict[str, Any]) -> ModelClient:
+        vendor = config.get("vendor", "openai")
+        model_name = config.get("model", "gpt-4o-mini")
+        policies = config.get("policies", {})
 
-    # Retrieve a model for a given role using the config registry.
-    # Applies singleton caching to prevent duplicate model instantiations.
-    # Wraps the result with a Proxy for enforcing operational policies.
-    def get_model(self, role: str) -> Any:
-        logger.debug(f"[ModelFactory] Getting model for role: {role}")
-        config = self.registry.get(role)
-        if config is None:
-            raise ValueError(f"No model configuration found for role: {role}")
+        logger.debug(
+            f"[ModelFactory] Resolving adapter for role='{role}', "
+            f"vendor='{vendor}', model='{model_name}', policies={policies}"
+        )
 
-        # Vendor-specific instantiation logic wrapped with ModelProxy caching
-        def create_proxy():
-            vendor = config.get("vendor")
-            logger.warning(f"[ModelFactory] Vendor '{vendor}' requested for role '{role}' with config: {config}")
-
+        def create_proxy() -> ModelClient:
             if vendor == "openai":
-                from openai_model import OpenAIModel
-                model_instance = OpenAIModel(config)
-            elif vendor == "huggingface":
-                from huggingface_model import HuggingFaceModel
-                model_instance = HuggingFaceModel(config)
+                adapter = OpenAIAdapter(model=model_name, **config)
+            elif vendor == "anthropic":
+                adapter = AnthropicAdapter(model=model_name, **config)
             elif vendor == "mock":
-                from tests.test_utils import MockModel
-                model_instance = MockModel(config)
+                class MockAdapter(ModelClient):
+                    def __init__(self, model_id: str):
+                        self.provider = "mock"
+                        self.model = model_id
+                    def generate(self, prompt: str, **kwargs):
+                        mocked = f"[mock:{self.model}] {prompt}"
+                        return {
+                            "text": mocked,
+                            "provider": self.provider,
+                            "model": self.model,
+                            "tokens_in": 0,
+                            "tokens_out": len(mocked.split()),
+                            "latency_ms": 0,
+                            "cost": 0.0,
+                        }
+                adapter = MockAdapter(model_name)
             else:
-                logger.error(f"[ModelFactory] Unsupported vendor: {vendor}")
+                logger.error(f"[ModelFactory] Unsupported vendor '{vendor}' for role '{role}'")
                 raise ValueError(f"Unsupported vendor: {vendor}")
 
-            return ModelProxy(model_instance, config.get("policies", {}))
+            return ModelProxy(adapter, policies)
 
-        key = tuple(sorted(config.items()))
-        model_proxy = get_or_set(key, create_proxy)
-        logger.debug(f"[ModelFactory] Returning cached ModelProxy for role: {role}")
-        return model_proxy
+        # Cache instances by (vendor, model, policies) to avoid rebuilding proxies
+        policies_key: Tuple[Tuple[str, Any], ...] = tuple(sorted(policies.items()))
+        cache_key = (vendor, model_name, policies_key)
+        client = get_or_set(cache_key, create_proxy)
+
+        logger.debug(
+            f"[ModelFactory] Returning cached ModelClient proxy for role='{role}' "
+            f"({vendor}:{model_name})"
+        )
+        return client
+
+
+# TODO:
+# In a future iteration, we can reintroduce a registry mapping logical roles
+# (e.g. "summarizer", "assistant", "moderator") to default configs. At that point,
+# callers would pass only `role`, and ModelFactory would look up vendor/model/policies
+# instead of requiring the full config each time.

@@ -5,7 +5,14 @@ from abc import ABC, abstractmethod
 class ConversationState(ABC):
     """
     Abstract base class for all conversation states.
-    Defines the interface that each concrete state must implement.
+    Each state represents one phase in the conversation flow
+    (e.g. Greeting, Clarifying, Executing, Summarizing).
+
+    States should NOT call model APIs directly.
+    Instead, they should ask the ConversationEngine to do that via
+    engine.generate_with_model(...), which routes through the Bridge
+    (ConversationEngine -> ModelManager) and the Adapter for the
+    current provider.
     """
 
     @abstractmethod
