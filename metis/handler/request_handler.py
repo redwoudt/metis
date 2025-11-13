@@ -29,14 +29,6 @@ class RequestHandler:
     - Injects the right adapter (ModelClient) into the Bridge implementor (ModelManager),
       then into the ConversationEngine.
     - Asks the engine to respond.
-
-    High-level flow / mental model:
-        RequestHandler  -> ConversationEngine (state machine, Memento)
-                         -> ModelManager (Bridge implementor)
-                         -> Adapter (ModelClient for a vendor, via ModelFactory)
-
-    The states inside ConversationEngine will call engine.generate_with_model(),
-    so they never talk to Anthropic/OpenAI/etc. directly.
     """
 
     def __init__(
@@ -55,8 +47,6 @@ class RequestHandler:
         self.memory_manager = memory_manager or MemoryManager()
         self.strategy = strategy
 
-        # Per-request / per-environment model config (which vendor, which model, etc.)
-        # Falls back to global Config if not provided.
         self.config = config or {
             "vendor": getattr(Config, "DEFAULT_VENDOR", "openai"),
             "model": getattr(Config, "DEFAULT_MODEL", "gpt-4o-mini"),
@@ -76,7 +66,6 @@ class RequestHandler:
         session = self.session_manager.load_or_create(user_id)
         logger.debug(f"[handle_prompt] Loaded session: {session}")
 
-        # Attach engine placeholder if needed
         if not hasattr(session, "engine") or session.engine is None:
             session.engine = None
         engine = session.engine
@@ -89,7 +78,6 @@ class RequestHandler:
                 dsl_text = "".join(dsl_blocks)
                 dsl_ctx = interpret_prompt_dsl(dsl_text)
 
-                # Strip DSL hints from the visible user input
                 user_input = re.sub(
                     r"\[[^\[\]:]+:[^\[\]]+?\]", "", user_input
                 ).strip()
@@ -97,7 +85,6 @@ class RequestHandler:
                 logger.info(f"[handle_prompt] DSL context extracted: {dsl_ctx}")
                 logger.debug(f"[handle_prompt] Cleaned user_input: {user_input}")
 
-                # Persist tone/persona/context onto the session
                 if dsl_ctx.get("persona"):
                     setattr(session, "persona", dsl_ctx["persona"])
                 if dsl_ctx.get("tone"):
@@ -120,7 +107,6 @@ class RequestHandler:
                     ).strip()
                     setattr(session, "context", merged_ctx)
         except Exception:
-            # If DSL parsing explodes, we degrade gracefully and continue
             dsl_ctx = {}
 
         # ---------------- Snapshot / Undo (Memento) ----------------
@@ -146,9 +132,7 @@ class RequestHandler:
         logger.info(f"[handle_prompt] State from session: '{state}'")
 
         if not state:
-            logger.info(
-                "[handle_prompt] State not found in session, deriving..."
-            )
+            logger.info("[handle_prompt] State not found in session, deriving...")
             if dsl_ctx.get("task"):
                 task_lc = dsl_ctx["task"].strip().lower()
                 task_to_state = {
@@ -169,23 +153,17 @@ class RequestHandler:
                 logger.info(f"[handle_prompt] State from strategy: '{state}'")
                 if state:
                     setattr(session, "state", state)
-                    logger.debug(
-                        f"[handle_prompt] Saved state '{state}' to session"
-                    )
+                    logger.debug(f"[handle_prompt] Saved state '{state}' to session")
 
         logger.info(f"[handle_prompt] State determined: '{state}'")
 
         # ---------------- Map state/task to model role ----------------
-        # Old world: model_factory.get_model(role)
-        # New world: ModelFactory.for_role(role, config) -> ModelClient adapter
         if dsl_ctx.get("task"):
             model_role = dsl_ctx["task"].strip().lower()
         elif isinstance(state, str) and state:
             model_role = state.replace("State", "").lower()
         elif hasattr(state, "__class__"):
-            model_role = state.__class__.__name__.replace(
-                "State", ""
-            ).lower()
+            model_role = state.__class__.__name__.replace("State", "").lower()
         else:
             model_role = "analysis"
 
@@ -194,19 +172,17 @@ class RequestHandler:
             f"(state='{state}', dsl_task='{dsl_ctx.get('task')}')"
         )
 
-        # Build a concrete adapter (Adapter pattern) for this role+config
+        # Build adapter (Adapter pattern)
         model_client = ModelFactory.for_role(model_role, self.config)
 
-        # Bridge implementor: wraps the adapter so the engine stays provider-agnostic
+        # Bridge implementor
         model_manager = ModelManager(model_client)
 
-        # Ensure engine exists and is wired to the bridge implementor
+        # Ensure engine exists and is wired to bridge
         if engine is None:
             engine = ConversationEngine(model_manager=model_manager)
             session.engine = engine
         else:
-            # If engine already exists, update its model_manager so routing decisions
-            # can change across turns (summarizer vs planner, fallback vendor, etc.)
             if hasattr(engine, "set_model_manager"):
                 engine.set_model_manager(model_manager)
             else:
@@ -217,7 +193,6 @@ class RequestHandler:
             f"[handle_prompt] Engine responding using state: {state or 'default'}"
         )
 
-        # Some states map directly to known prompt templates
         known_states = [
             "SummarizingState",
             "ClarifyingState",
@@ -256,18 +231,17 @@ class RequestHandler:
 
             # Normalize to string before handing to engine.respond(...)
             try:
-                prompt_text = (
-                    prompt_obj.render()
-                    if hasattr(prompt_obj, "render")
-                    else str(prompt_obj)
-                )
-            except Exception:
+                if hasattr(prompt_obj, "render") and callable(prompt_obj.render):
+                    prompt_text = prompt_obj.render()
+                else:
+                    prompt_text = str(prompt_obj)
+            except Exception as e:
+                logger.warning(f"[handle_prompt] Prompt render failed: {e}")
                 prompt_text = str(prompt_obj)
 
             response = engine.respond(prompt_text)
 
         else:
-            # Fallback path: use the generic prompt builder
             logger.debug(
                 f"[handle_prompt] Using prompt_builder for state '{state or 'default'}'"
             )

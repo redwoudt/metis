@@ -1,6 +1,9 @@
 import logging
+from typing import Any, Optional
+
 from metis.states.greeting import GreetingState  # initial conversation state
 from metis.memory.snapshot import ConversationSnapshot  # Memento for snapshot/restore
+from metis.models.model_client import ModelClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,15 +18,19 @@ class ConversationEngine:
     - It does NOT talk to provider SDKs directly.
     - Instead, it calls a ModelManager (the Bridge implementor), which wraps a
       provider-specific adapter (the Adapter pattern).
+
+    Fix 3:
+    - Maintain a `model` attribute synchronized with ModelManager.get_model().
+    - Preserve the model_manager reference across snapshots (tests expect it).
+    - Refresh the model pointer after restore to avoid stale or None values.
     """
 
     def __init__(self, model_manager):
-        # State pattern
-        self.state = GreetingState()  # starting state
-        self.history = []             # conversation transcript / outputs
+        # --- State Pattern Context ---
+        self.state = GreetingState()   # initial state
+        self.history = []              # conversation transcript
 
-        # Session / turn preferences and context hints
-        # Pre-populate expected keys so states can safely access them without KeyError.
+        # Conversation preferences / session-level hints
         self.preferences = {
             "tone": "friendly",
             "persona": "",
@@ -31,8 +38,19 @@ class ConversationEngine:
             "tool_output": "",
         }
 
-        # Bridge implementor (injected)
+        # --- Bridge Collaborator (ModelManager) ---
         self.model_manager = model_manager
+
+        # Expose the active ModelClient for debugging/tests
+        self.model: Optional[Any] = None
+        if hasattr(self.model_manager, "get_model"):
+            try:
+                self.model = self.model_manager.get_model()
+            except Exception:
+                logger.debug(
+                    "[ConversationEngine] model_manager.get_model() failed during __init__",
+                    exc_info=True,
+                )
 
         logger.debug(
             "[ConversationEngine] Initialized with GreetingState, "
@@ -41,28 +59,48 @@ class ConversationEngine:
             type(model_manager).__name__,
         )
 
+    # ---------------------------------------------------------------------
+    # Internal utilities
+    # ---------------------------------------------------------------------
+    def _refresh_model_ref(self) -> None:
+        """Keep self.model synchronized with the current ModelManager."""
+        if hasattr(self.model_manager, "get_model"):
+            try:
+                self.model = self.model_manager.get_model()
+            except Exception:
+                logger.debug(
+                    "[ConversationEngine] model_manager.get_model() failed in _refresh_model_ref",
+                    exc_info=True,
+                )
+
+    def get_model(self) -> ModelClient | None:
+            """
+            Public accessor used by tests to verify the active ModelClient.
+            """
+            self._refresh_model_ref()
+            if self.model_manager is None:
+                return None
+            return self.model_manager.model_client
+
+    # ---------------------------------------------------------------------
+    # State management
+    # ---------------------------------------------------------------------
     def set_state(self, new_state):
-        """
-        Transition to a new conversation state.
-        Each state decides how to respond to input,
-        but they all share this engine context.
-        """
+        """Transition to a new conversation state."""
         logger.debug(
             "[ConversationEngine] Transitioning to new state: %s",
             new_state.__class__.__name__,
         )
         self.state = new_state
 
+    # ---------------------------------------------------------------------
+    # Dialogue and model interaction
+    # ---------------------------------------------------------------------
     def respond(self, user_input: str) -> str:
         """
-        High-level entry point: ask the *current state* to handle the input.
-
-        The state will typically:
-        - interpret the user_input,
-        - optionally call engine.generate_with_model() to get LLM output,
-        - return a response string.
-
-        We append that response into history for traceability.
+        High-level entry point for user messages.
+        Delegates to the current state’s `respond()` method,
+        which may internally call `generate_with_model()`.
         """
         logger.debug(
             "[ConversationEngine] Calling respond on state: %s with user_input='%s'",
@@ -72,7 +110,7 @@ class ConversationEngine:
 
         response = self.state.respond(self, user_input)
 
-        # Defensive: ensure we always work with a string
+        # Always coerce to string
         if response is None:
             logger.warning(
                 "[ConversationEngine] State %s returned None; coercing to empty string",
@@ -81,7 +119,6 @@ class ConversationEngine:
             response = ""
 
         self.history.append(response)
-
         logger.debug(
             "[ConversationEngine] Response appended to history. Total entries: %d",
             len(self.history),
@@ -91,18 +128,27 @@ class ConversationEngine:
     def generate_with_model(self, prompt: str) -> str:
         """
         Bridge hook:
-        States call this instead of talking to OpenAI/Anthropic/etc. directly.
-
-        Under the hood, this delegates to the injected ModelManager,
-        which in turn delegates to the correct ModelClient adapter.
-
-        This is the key point where Adapter + Bridge meet.
+        States use this to delegate generation to the model layer (ModelManager).
+        Ensures consistent interaction with adapters via the Bridge abstraction.
         """
+        self._refresh_model_ref()
         logger.debug(
             "[ConversationEngine] Delegating prompt to ModelManager: %r",
             prompt[:200],
         )
-        generated = self.model_manager.generate(prompt)
+
+        try:
+            generated = self.model_manager.generate(prompt)
+        except Exception as e:
+            logger.error("[ConversationEngine] ModelManager.generate failed: %s", e)
+            generated = ""
+
+        # Normalize output to string
+        if isinstance(generated, dict):
+            generated = generated.get("text", "")
+        elif not isinstance(generated, str):
+            generated = str(generated or "")
+
         logger.debug(
             "[ConversationEngine] ModelManager returned text of length %d",
             len(generated) if generated else 0,
@@ -111,31 +157,42 @@ class ConversationEngine:
 
     def set_model_manager(self, model_manager):
         """
-        Allows RequestHandler to update which model manager we're using
-        mid-session (e.g. swap summarizer vs planner model, fallback provider, etc.).
+        Allows runtime replacement of the model_manager (e.g., for task-specific switching).
+        Keeps model reference fresh.
         """
         logger.debug(
             "[ConversationEngine] Updating model_manager to %s",
             type(model_manager).__name__,
         )
         self.model_manager = model_manager
+        self._refresh_model_ref()
 
-    # --- Memento support -------------------------------------------------
-
+    # ---------------------------------------------------------------------
+    # Memento pattern: snapshot / restore
+    # ---------------------------------------------------------------------
     def create_snapshot(self):
         """
-        Create a deep snapshot of the engine's current internal state for rollback.
-        We include the current state object, history, prefs, and model_manager ref.
-        ConversationSnapshot already deep-copies mutable structures where needed.
+        Create a deep snapshot of the engine’s current internal state.
+        Includes state, history, preferences, and a reference to the model_manager.
         """
         snapshot = ConversationSnapshot(self.__dict__)
+
         logger.debug("[ConversationEngine] Snapshot created")
         return snapshot
 
     def restore_snapshot(self, snapshot):
         """
-        Restore engine state from a given snapshot.
-        This lets us roll back after a bad tool call, an unsafe model answer, etc.
+        Restore the engine’s state from a given snapshot.
+
+        The snapshot should fully roll back the engine's internal state,
+        including the model_manager, so that any adapter/model changes made
+        after the snapshot are undone.
         """
-        self.__dict__ = snapshot.get_state()
+        state_data = snapshot.get_state()
+
+        # Restore full internal state, including model_manager
+        self.__dict__.update(state_data)
+
+        # Refresh the model reference for safety
+        self._refresh_model_ref()
         logger.debug("[ConversationEngine] State restored from snapshot")

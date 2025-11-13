@@ -1,17 +1,29 @@
 # tests/integration/test_state_memento_flow.py
 
 from metis.conversation_engine import ConversationEngine
+from metis.models.model_factory import ModelFactory
+from metis.components.model_manager import ModelManager
 from metis.memory.manager import MemoryManager
 
+
+def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
+    """Helper to build an engine wired through the Bridge (ModelManager)."""
+    client = ModelFactory.for_role(
+        "analysis",
+        {"vendor": vendor, "model": model, "policies": {}},
+    )
+    return ConversationEngine(model_manager=ModelManager(client))
+
+
 def test_state_memento_integration_flow():
-    engine = ConversationEngine()
+    engine = _engine()
     memory = MemoryManager()
 
     # Initial greeting
     assert engine.state.__class__.__name__ == "GreetingState"
     engine.history.append("User: Start chat")
 
-    # Save initial state
+    # Save initial state (snapshot must capture the current state + history + model_manager)
     snapshot = engine.create_snapshot()
     memory.save(snapshot)
 

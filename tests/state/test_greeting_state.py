@@ -2,13 +2,24 @@
 
 from metis.states.greeting import GreetingState
 from metis.conversation_engine import ConversationEngine
+from metis.models.model_factory import ModelFactory
+from metis.components.model_manager import ModelManager
+
+
+def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
+    """Helper to build an engine wired through the Bridge (ModelManager)."""
+    client = ModelFactory.for_role(
+        "analysis",
+        {"vendor": vendor, "model": model, "policies": {}},
+    )
+    return ConversationEngine(model_manager=ModelManager(client))
 
 
 def test_greeting_transitions_to_clarifying():
     """
     Ensures GreetingState responds with a friendly message and transitions to ClarifyingState.
     """
-    engine = ConversationEngine()
+    engine = _engine()
     engine.set_state(GreetingState())
 
     user_input = "Hi"

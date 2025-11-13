@@ -82,9 +82,9 @@ class MockModel:
 
 
 class LoggingMockModel(MockModel):
-    def __init__(self, **kwargs):
-        super().__init__(log=True, **kwargs)
-        self.logger = logging.getLogger("metis.models.logging_mock")  # ensure instance logger
+    def __init__(self, log: bool = True, **kwargs):
+        # Allow tests/factories to override log if needed, but no double passing
+        super().__init__(log=log, **kwargs)
 
     def generate(self, prompt, **kwargs):
         normalized_prompt = str(prompt).strip()
