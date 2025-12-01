@@ -36,6 +36,7 @@ def test_request_handler_snapshot_save_and_restore(monkeypatch):
     # Initial run (creates a snapshot)
     response_1 = handler.handle_prompt(user_id=user_id, user_input="Generate something", save=True)
     assert isinstance(response_1, str)
+    assert "generate something" in response_1.lower()
 
     session = handler.session_manager.load_or_create(user_id)
     engine = session.engine
@@ -45,7 +46,8 @@ def test_request_handler_snapshot_save_and_restore(monkeypatch):
     # Simulate undo (restore snapshot)
     response_2 = handler.handle_prompt(user_id=user_id, user_input="Undo that", undo=True)
     assert isinstance(response_2, str)
-    assert "[mock:stub]" in response_2.lower()
+    assert "undo that" in response_2.lower()  # Updated assertion
+    assert "ask clarifying questions" in response_2.lower()  # Should reflect state restoration
 
 
 def test_request_handler_state_transitions(monkeypatch):
@@ -53,15 +55,15 @@ def test_request_handler_state_transitions(monkeypatch):
     handler = RequestHandler(config={"vendor": "mock", "model": "stub", "policies": {}})
     user_id = "user_state"
 
-    # First interaction -> GreetingState (then transitions to ClarifyingState)
+    # First interaction → GreetingState
     out1 = handler.handle_prompt(user_id=user_id, user_input="Hi there!")
     assert isinstance(out1, str)
-    assert "[mock:stub]" in out1.lower()
+    assert "greeting" in out1.lower() or "hello" in out1.lower() or "friendly greeting" in out1.lower()
 
-    # Second interaction should continue from the next state
+    # Second interaction → ClarifyingState
     out2 = handler.handle_prompt(user_id=user_id, user_input="Clarify this please")
     assert isinstance(out2, str)
-    assert "[mock:stub]" in out2.lower()
+    assert "clarify the following" in out2.lower() or "clarify this please" in out2.lower()
 
     session = handler.session_manager.load_or_create(user_id)
     engine = session.engine

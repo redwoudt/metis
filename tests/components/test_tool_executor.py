@@ -4,9 +4,12 @@ Tests for ToolExecutor functionality including tool dispatching and error handli
 
 from metis.components.tool_executor import ToolExecutor
 import pytest
+from unittest.mock import patch
 
 
-def test_tool_executor_weather():
+@patch("requests.get")
+def test_tool_executor_weather(mock_get):
+    mock_get.return_value.text = "London: 🌤 +12°C"
     executor = ToolExecutor()
     output = executor.execute("weather", "Weather update")
     assert isinstance(output, str)
