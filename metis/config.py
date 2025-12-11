@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# NEW IMPORT: services container
+from metis.services.services import get_services
+
 
 def resolve_env(value: str) -> str:
     if value.startswith("env:"):
@@ -51,3 +54,15 @@ class Config:
             }
         }
     }
+
+    @staticmethod
+    def services():
+        """
+        Return the shared Services container used during tool execution.
+
+        Example:
+            services = Config.services()
+            services.quota
+            services.audit_logger
+        """
+        return get_services()

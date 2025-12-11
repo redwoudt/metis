@@ -1,42 +1,41 @@
-# --- metis/components/tool_executor.py ---
 """
-ToolExecutor handles external tool invocations that enhance prompts with real-time or auxiliary data.
+tool_executor.py — Deprecated.
 
-How it works:
-- Detects tool type from the requested name.
-- Calls the corresponding handler (e.g., weather API).
-- Returns processed output suitable for prompt enrichment.
+This class previously performed direct tool execution, but the system
+has fully migrated to the new Command + Chain of Responsibility architecture.
 
-Expansion Ideas:
-- Add support for additional tools (e.g., calculators, search, code runners).
-- Implement tool chaining or workflows.
-- Add error classification and retry logic.
-- Support sandboxing or rate limiting per tool.
+ToolExecutor now remains ONLY as a compatibility stub to avoid breaking imports.
+All callers should route tool execution through:
+
+    RequestHandler.execute_tool()
+
+This file may be safely deleted once all legacy references are removed.
 """
 
-import re
-import requests
-from metis.config import Config
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    def execute(self, tool_name, user_input):
-        if tool_name.lower() == "weather":
-            return self._get_weather(user_input)
-        raise Exception(f"Tool '{tool_name}' not supported.")
+    """
+    DEPRECATED.
 
-    def _get_weather(self, user_input: str) -> str:
-        import re
+    Retained only to prevent import errors during the migration.
+    It does nothing and should not be used for real tool execution.
+    """
 
-        # Extract a location, default to London
-        match = re.search(r"in ([A-Za-z ]+)", user_input, re.IGNORECASE)
-        location = match.group(1).strip() if match else "London"
+    def __init__(self, *args, **kwargs):
+        logger.warning(
+            "ToolExecutor is deprecated and no longer performs tool execution. "
+            "Use RequestHandler.execute_tool() instead."
+        )
+        raise RuntimeError(
+            "ToolExecutor is deprecated. Use RequestHandler.execute_tool() instead."
+        )
 
-        try:
-            url = f"{Config.WEATHER_API_URL}/{location}?format=3"
-            response = requests.get(url)
-            if response.status_code == 200:
-                return response.text.strip()
-            return f"Weather unavailable for {location}"
-        except Exception:
-            return "Weather service error"
+    def execute(self, *args, **kwargs):
+        raise RuntimeError(
+            "ToolExecutor.execute() has been removed. "
+            "Use RequestHandler.execute_tool() instead."
+        )

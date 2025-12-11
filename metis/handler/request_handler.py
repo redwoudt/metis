@@ -2,7 +2,6 @@ import re
 import logging
 
 from metis.components.session_manager import SessionManager
-from metis.components.tool_executor import ToolExecutor
 from metis.prompts.builders.prompt_builder import PromptBuilder
 from metis.policy.rate_limit import RateLimitPolicy
 from metis.policy.auth import AuthPolicy
@@ -14,33 +13,30 @@ from metis.dsl import interpret_prompt_dsl
 from metis.config import Config
 
 from metis.models.model_factory import ModelFactory
-from metis.components.model_manager import ModelManager  # Bridge implementor
+from metis.components.model_manager import ModelManager
+
+from metis.commands import command_registry
+from metis.commands.base import ToolContext
+from metis.handlers.pipelines import build_light_pipeline, build_strict_pipeline
+
 
 logger = logging.getLogger(__name__)
 
 
 class RequestHandler:
     """
-    RequestHandler is the orchestration entry point.
-
-    - Gathers context (session, DSL, tool output).
-    - Selects which "role" the model should play for this turn.
-    - Builds the prompt.
-    - Injects the right adapter (ModelClient) into the Bridge implementor (ModelManager),
-      then into the ConversationEngine.
-    - Asks the engine to respond.
+    RequestHandler orchestrates both conversational reasoning and
+    tool execution using Commands and the Chain of Responsibility.
     """
 
     def __init__(
         self,
         strategy=None,
         policy=None,
-        tool_executor=None,
         memory_manager=None,
         config=None,
     ):
         self.session_manager = SessionManager()
-        self.tool_executor = tool_executor or ToolExecutor()
         self.prompt_builder = PromptBuilder()
         self.policy = policy or RateLimitPolicy()
         self.auth_policy = AuthPolicy()
@@ -53,24 +49,55 @@ class RequestHandler:
             "policies": getattr(Config, "MODEL_POLICIES", {}),
         }
 
-    def handle_prompt(self, user_id, user_input, save=False, undo=False):
-        logger.info(
-            f"[handle_prompt] Called for user_id='{user_id}' with input='{user_input}'"
+    # ----------------------------------------------------------------------
+    # Tool execution entry point using Commands + Handler Pipeline
+    # ----------------------------------------------------------------------
+    def execute_tool(self, tool_name, args, user, services):
+        """Execute a tool using the Command and Chain-of-Responsibility pipeline."""
+
+        if tool_name not in command_registry:
+            raise ToolExecutionError(f"Unknown tool '{tool_name}'")
+
+        CommandCls = command_registry[tool_name]
+        command = CommandCls()
+
+        context = ToolContext(
+            command=command,
+            args=args,
+            user=user,
+            metadata={"allow_user_tools": True},
         )
 
-        # ---------------- Policy enforcement ----------------
+        # Sensitive tools get stricter handlers
+        if tool_name in {"execute_sql", "schedule_task"}:
+            pipeline = build_strict_pipeline(services.quota, services.audit_logger)
+        else:
+            pipeline = build_light_pipeline()
+
+        final_context = pipeline.handle(context)
+        return final_context.result
+
+    # ----------------------------------------------------------------------
+    # Main request handling and conversation state machine
+    # ----------------------------------------------------------------------
+    def handle_prompt(self, user_id, user_input, save=False, undo=False):
+        logger.info(f"[handle_prompt] Called for user_id='{user_id}' with input='{user_input}'")
+
+        # Policy enforcement
         self.policy.enforce(user_id, user_input)
         self.auth_policy.enforce(user_id, user_input)
 
-        # ---------------- Session load ----------------
+        # Load session
         session = self.session_manager.load_or_create(user_id)
-        logger.debug(f"[handle_prompt] Loaded session: {session}")
+        engine = getattr(session, "engine", None)
 
-        if not hasattr(session, "engine") or session.engine is None:
-            session.engine = None
-        engine = session.engine
+        # Ensure engine has preferences dictionary
+        if engine is not None and not hasattr(engine, "preferences"):
+            engine.preferences = {}
 
-        # ---------------- DSL parsing ----------------
+        # ------------------------------------------------------------------
+        # DSL parsing
+        # ------------------------------------------------------------------
         dsl_ctx = {}
         try:
             dsl_blocks = re.findall(r"\[[^\[\]:]+:[^\[\]]+?\]", user_input or "")
@@ -78,13 +105,10 @@ class RequestHandler:
                 dsl_text = "".join(dsl_blocks)
                 dsl_ctx = interpret_prompt_dsl(dsl_text)
 
-                user_input = re.sub(
-                    r"\[[^\[\]:]+:[^\[\]]+?\]", "", user_input
-                ).strip()
+                # Remove DSL tags from visible user input
+                user_input = re.sub(r"\[[^\[\]:]+:[^\[\]]+?\]", "", user_input).strip()
 
-                logger.info(f"[handle_prompt] DSL context extracted: {dsl_ctx}")
-                logger.debug(f"[handle_prompt] Cleaned user_input: {user_input}")
-
+                # Update persona, tone, context, etc.
                 if dsl_ctx.get("persona"):
                     setattr(session, "persona", dsl_ctx["persona"])
                 if dsl_ctx.get("tone"):
@@ -99,17 +123,21 @@ class RequestHandler:
                     extras.append(f"Format: {dsl_ctx['format']}")
 
                 if extras:
-                    existing_ctx = getattr(session, "context", "")
-                    merged_ctx = (
-                        existing_ctx
-                        + ("\n" if existing_ctx else "")
+                    existing = getattr(session, "context", "")
+                    merged = (
+                        existing
+                        + ("\n" if existing else "")
                         + "\n".join(extras)
                     ).strip()
-                    setattr(session, "context", merged_ctx)
-        except Exception:
+                    setattr(session, "context", merged)
+
+        except Exception as exc:
+            logger.exception("[RequestHandler] DSL parse error: %s", exc)
             dsl_ctx = {}
 
-        # ---------------- Snapshot / Undo (Memento) ----------------
+        # ------------------------------------------------------------------
+        # Undo / Save snapshot (Memento pattern)
+        # ------------------------------------------------------------------
         if undo:
             snapshot = self.memory_manager.restore_last()
             if snapshot and engine is not None:
@@ -119,23 +147,39 @@ class RequestHandler:
                 snapshot = engine.create_snapshot()
                 self.memory_manager.save(snapshot)
 
-        # ---------------- Tool execution enrichment ----------------
-        if "weather" in user_input.lower():
-            try:
-                weather_data = self.tool_executor.execute("weather", user_input)
-                user_input += f"\n(Weather Info: {weather_data})"
-            except Exception as e:
-                raise ToolExecutionError(str(e))
+        # ------------------------------------------------------------------
+        # Tool selection (from DSL or future model tool calls)
+        # ------------------------------------------------------------------
+        tool_name = None
+        tool_args = {}
 
-        # ---------------- Determine conversation state ----------------
+        # DSL-driven tool selection
+        if "tool" in dsl_ctx:
+            tool_name = dsl_ctx["tool"]
+            tool_args = dsl_ctx.get("args", {})
+
+        # Future extension: model-provided tool call structure
+        if "tool_call" in dsl_ctx:
+            tc = dsl_ctx["tool_call"]
+            tool_name = tc.get("name")
+            tool_args = tc.get("arguments", {})
+
+        # Store tool information for ExecutingState
+        if engine is not None and tool_name:
+            if not hasattr(engine, "preferences"):
+                engine.preferences = {}
+            engine.preferences["tool_name"] = tool_name
+            engine.preferences["tool_args"] = tool_args
+            logger.info(f"[RequestHandler] Tool selected: {tool_name} {tool_args}")
+
+        # ------------------------------------------------------------------
+        # State resolution
+        # ------------------------------------------------------------------
         state = getattr(session, "state", "") or ""
-        logger.info(f"[handle_prompt] State from session: '{state}'")
 
         if not state:
-            logger.info("[handle_prompt] State not found in session, deriving...")
             if dsl_ctx.get("task"):
-                task_lc = dsl_ctx["task"].strip().lower()
-                task_to_state = {
+                mapping = {
                     "summarize": "SummarizingState",
                     "summary": "SummarizingState",
                     "plan": "PlanningState",
@@ -145,54 +189,40 @@ class RequestHandler:
                     "critique": "CritiqueState",
                     "review": "CritiqueState",
                 }
-                state = task_to_state.get(task_lc, "")
-                logger.info(f"[handle_prompt] State from task_lc: '{state}'")
+                task = dsl_ctx["task"].strip().lower()
+                state = mapping.get(task, "")
 
             elif self.strategy:
                 state = self.strategy.determine_state_name(user_input, dsl_ctx)
-                logger.info(f"[handle_prompt] State from strategy: '{state}'")
                 if state:
                     setattr(session, "state", state)
-                    logger.debug(f"[handle_prompt] Saved state '{state}' to session")
 
-        logger.info(f"[handle_prompt] State determined: '{state}'")
-
-        # ---------------- Map state/task to model role ----------------
+        # ------------------------------------------------------------------
+        # Determine model role
+        # ------------------------------------------------------------------
         if dsl_ctx.get("task"):
             model_role = dsl_ctx["task"].strip().lower()
         elif isinstance(state, str) and state:
             model_role = state.replace("State", "").lower()
-        elif hasattr(state, "__class__"):
-            model_role = state.__class__.__name__.replace("State", "").lower()
         else:
             model_role = "analysis"
 
-        logger.debug(
-            f"[handle_prompt] Resolved model_role='{model_role}' "
-            f"(state='{state}', dsl_task='{dsl_ctx.get('task')}')"
-        )
-
-        # Build adapter (Adapter pattern)
+        # ------------------------------------------------------------------
+        # Setup model manager
+        # ------------------------------------------------------------------
         model_client = ModelFactory.for_role(model_role, self.config)
-
-        # Bridge implementor
         model_manager = ModelManager(model_client)
 
-        # Ensure engine exists and is wired to bridge
         if engine is None:
             engine = ConversationEngine(model_manager=model_manager)
             session.engine = engine
+            engine.preferences = {}
         else:
-            if hasattr(engine, "set_model_manager"):
-                engine.set_model_manager(model_manager)
-            else:
-                engine.model_manager = model_manager
+            engine.set_model_manager(model_manager)
 
-        # ---------------- Build the actual prompt text ----------------
-        logger.info(
-            f"[handle_prompt] Engine responding using state: {state or 'default'}"
-        )
-
+        # ------------------------------------------------------------------
+        # Prompt building and model response
+        # ------------------------------------------------------------------
         known_states = [
             "SummarizingState",
             "ClarifyingState",
@@ -201,55 +231,35 @@ class RequestHandler:
         ]
 
         if state in known_states:
-            logger.debug(
-                f"[handle_prompt] Using render_prompt path for state '{state or 'default'}'"
-            )
-
-            state_to_prompt_type = {
+            type_map = {
                 "SummarizingState": "summarize",
                 "ClarifyingState": "clarify",
                 "GreetingState": "greeting",
                 "ExecutingState": "executing",
             }
+            prompt_type = type_map.get(state, state.replace("State", "").lower())
 
-            prompt_type = state_to_prompt_type.get(
-                state,
-                state.replace("State", "").lower()
-                if isinstance(state, str)
-                else state.__class__.__name__.replace("State", "").lower(),
-            )
-
-            # Build a provider-agnostic prompt object
             prompt_obj = render_prompt(
                 prompt_type=prompt_type,
                 user_input=user_input,
                 context=getattr(session, "context", ""),
-                tool_output=getattr(session, "tool_output", ""),
+                tool_output=getattr(engine.preferences, "tool_output", ""),
                 tone=getattr(session, "tone", ""),
                 persona=getattr(session, "persona", ""),
             )
 
-            # Normalize to string before handing to engine.respond(...)
-            try:
-                if hasattr(prompt_obj, "render") and callable(prompt_obj.render):
-                    prompt_text = prompt_obj.render()
-                else:
-                    prompt_text = str(prompt_obj)
-            except Exception as e:
-                logger.warning(f"[handle_prompt] Prompt render failed: {e}")
-                prompt_text = str(prompt_obj)
-
-            response = engine.respond(prompt_text)
-
-        else:
-            logger.debug(
-                f"[handle_prompt] Using prompt_builder for state '{state or 'default'}'"
+            prompt_text = (
+                prompt_obj.render()
+                if hasattr(prompt_obj, "render")
+                else str(prompt_obj)
             )
+            response = engine.respond(prompt_text)
+        else:
             prompt_text = self.prompt_builder.build(session, user_input)
             response = engine.respond(prompt_text)
 
-        # ---------------- Save session and return ----------------
-        logger.debug(f"[handle_prompt] Response: {response[:200]}")
+        # ------------------------------------------------------------------
+        # Save session and return
+        # ------------------------------------------------------------------
         self.session_manager.save(user_id, session)
-
         return response

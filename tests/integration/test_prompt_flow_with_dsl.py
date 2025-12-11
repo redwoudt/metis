@@ -17,7 +17,8 @@ def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
 
 def test_dsl_full_prompt_flow_via_request_handler(monkeypatch):
     """
-    End-to-end: DSL in user_input -> RequestHandler -> routed state/model -> engine.respond.
+    End-to-end:
+    DSL in user_input -> RequestHandler -> state selection -> prompt -> model response.
     """
     setup_test_registry(monkeypatch)
     from metis.handler.request_handler import RequestHandler
@@ -32,17 +33,26 @@ def test_dsl_full_prompt_flow_via_request_handler(monkeypatch):
         " Please summarize our discussion about onboarding."
     )
 
-    response = handler.handle_prompt(user_id=user_id, user_input=user_input, save=False, undo=False)
+    response = handler.handle_prompt(
+        user_id=user_id,
+        user_input=user_input,
+        save=False,
+        undo=False,
+    )
 
     assert isinstance(response, str)
-    # We expect either the task or the subject to appear in the response
-    assert "summarize" in response.lower() or "onboarding" in response.lower()
+
+    # Updated: "summarize" may not appear in modern templates,
+    # but the topic or "summary" should.
+    assert "onboarding" in response.lower() or "summary" in response.lower()
 
 
 def test_dsl_smoke_with_builder_and_engine():
     """
-    Lightweight smoke test: Interpreter -> DefaultPromptBuilder -> ConversationEngine.
-    Useful if RequestHandler evolves independently, but we still want DSL coverage.
+    Lightweight smoke test:
+    Interpreter -> DefaultPromptBuilder -> ConversationEngine.
+    Ensures DSL parsing and standalone prompt construction still work
+    independently of RequestHandler.
     """
     from metis.dsl import interpret_prompt_dsl
     from metis.prompts.builders.default_prompt_builder import DefaultPromptBuilder
@@ -59,11 +69,19 @@ def test_dsl_smoke_with_builder_and_engine():
 
     builder = DefaultPromptBuilder()
     prompt_obj: Prompt = builder.build_with_context(ctx)
+
     # Provide the actual user input we want summarized
-    prompt_obj.user_input = "Summarize the quarterly results focusing on ARR and churn."
+    prompt_obj.user_input = (
+        "Summarize the quarterly results focusing on ARR and churn."
+    )
 
     engine = _engine()
-    rendered = prompt_obj.render() if callable(getattr(prompt_obj, "render", None)) else str(prompt_obj)
+
+    rendered = (
+        prompt_obj.render()
+        if callable(getattr(prompt_obj, "render", None))
+        else str(prompt_obj)
+    )
     response = engine.respond(rendered)
 
     assert isinstance(response, str)

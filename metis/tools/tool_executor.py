@@ -1,16 +1,33 @@
-# tools/tool_executor.py
+"""
+DEPRECATED — tools/tool_executor.py
+
+ExecutingState previously used this dummy executor to simulate local tool
+actions. The system has now migrated to the Command + Chain of Responsibility
+architecture, and all tool execution should flow through:
+
+    RequestHandler.execute_tool()
+
+This file is retained only to prevent import errors during transition.
+"""
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ToolExecutor:
-    """
-    Dummy executor to simulate tool usage in ExecutingState.
-    Could be extended to call APIs, retrieve data, or perform local actions.
-    """
+    """Deprecated compatibility shim."""
 
-    def run(self, user_input):
-        """
-        Simulate a task execution.
+    def __init__(self, *args, **kwargs):
+        logger.warning(
+            "tools.ToolExecutor is deprecated. Use RequestHandler.execute_tool() instead."
+        )
+        raise RuntimeError(
+            "ToolExecutor is deprecated. Use RequestHandler.execute_tool() instead."
+        )
 
-        :param user_input: Task instruction from the user.
-        :return: Simulated result.
-        """
-        return f"Tool executed with: '{user_input}'"
+    def run(self, *args, **kwargs):
+        raise RuntimeError(
+            "tools.ToolExecutor.run() is no longer supported. "
+            "Tool execution must go through RequestHandler.execute_tool()."
+        )

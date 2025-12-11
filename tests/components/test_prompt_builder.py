@@ -3,7 +3,7 @@ Tests for PromptBuilder, including default and JSON formatting, sanitization, an
 """
 
 # --- Imports ---
-from metis.components.prompt_builder import PromptBuilder
+from metis.prompts.builders.prompt_builder import PromptBuilder
 from metis.prompts.builders.default_prompt_builder import DefaultPromptBuilder
 from metis.prompts.templates.summarization_prompt import SummarizationPrompt
 from metis.prompts.templates.critique_prompt import CritiquePrompt
