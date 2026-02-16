@@ -197,6 +197,27 @@ class ModelProxy(ModelClient):
 
         return out
 
+    def respond(self, prompt: str, **kwargs: Any) -> str:
+        """Return a plain string response.
+
+        The rest of the pipeline (e.g., RequestHandler) treats the active model as
+        a minimal responding interface. `generate()` remains available for richer
+        metadata, but `respond()` is the stable API for conversation flow.
+        """
+        result = self.generate(prompt, **kwargs)
+
+        # `generate()` may return a string for special cases (e.g., block_empty).
+        if isinstance(result, str):
+            return result
+
+        # Normal case: dict with a "text" field.
+        if isinstance(result, dict):
+            text = result.get("text")
+            return "" if text is None else str(text)
+
+        # Fallback: never leak None upstream.
+        return "" if result is None else str(result)
+
     # Exposed for tests that introspect the active backend instance
     def get_backend(self) -> Any:
         return self.backend

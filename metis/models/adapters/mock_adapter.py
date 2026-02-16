@@ -54,6 +54,18 @@ class MockAdapter(ModelClient):
             "cost": 0.0,
         }
 
+    def respond(self, prompt: str, **kwargs: Any) -> str:
+        """Return just the generated text.
+
+        The RequestHandler and proxies treat models as *responding* objects that
+        return a plain string. Our adapters still expose `generate()` for richer
+        metadata, but `respond()` is the stable, minimal interface used by the
+        rest of the pipeline.
+        """
+        result = self.generate(prompt, **kwargs)
+        # Be defensive: tests should never see None here.
+        return "" if result is None else str(result.get("text", ""))
+
     def __repr__(self):
         """Readable debugging representation for logs/tests."""
         return f"<MockAdapter vendor={self.vendor} model={self.model}>"

@@ -10,12 +10,12 @@ into a ModelManager (Bridge implementor).
 """
 
 import logging
-from typing import Any, Dict, Tuple, Optional, Callable
+from typing import Any, Dict, Tuple, Optional, Callable, cast
 
 from metis.config import Config
 from .singleton_cache import get_or_set
 from .model_proxy import ModelProxy
-from .adapters.base import ModelClient  # keep this import to satisfy isinstance checks in tests
+from .adapters.base import ModelClient, RespondingModel  # keep ModelClient import for isinstance checks in tests
 from .adapters.openai_adapter import OpenAIAdapter
 from .adapters.anthropic_adapter import AnthropicAdapter
 from .adapters.mock_adapter import MockAdapter  # top-level import for pickle safety
@@ -111,6 +111,25 @@ class ModelFactory:
                     **adapter_kwargs,
                 )
 
+                # Defensive: prevent silent regressions where factories return None/str
+                if product is None:
+                    raise TypeError("Custom factory returned None; expected a ModelClient/ModelProxy or model-like object.")
+                if isinstance(product, str):
+                    raise TypeError("Custom factory returned a str; expected a model object (did you return a response instead?).")
+
+                # If a factory returns a respond-only model (no generate), adapt it to ModelClient.
+                if isinstance(product, RespondingModel) and not (hasattr(product, "generate") and callable(getattr(product, "generate"))):
+
+                    class _RespondOnlyAdapter(ModelClient):
+                        def __init__(self, inner: RespondingModel):
+                            self._inner = inner
+
+                        def generate(self, prompt: str, **kwargs: Any) -> Dict[str, Any]:
+                            text = self._inner.respond(prompt, **kwargs)
+                            return {"text": text}
+
+                    product = cast(ModelClient, _RespondOnlyAdapter(product))
+
                 # If already a ModelProxy, return as-is to avoid double wrapping
                 if isinstance(product, ModelProxy):
                     return product
@@ -121,7 +140,8 @@ class ModelFactory:
 
                 # Duck-typed: accept anything with a callable .generate
                 if hasattr(product, "generate") and callable(getattr(product, "generate")):
-                    return ModelProxy(product, policies)
+                    # Treat as ModelClient for typing purposes; ModelProxy only requires .generate at runtime.
+                    return ModelProxy(cast(ModelClient, product), policies)
 
                 logger.error(
                     f"[ModelFactory] Factory for role='{role}' must return something with generate(), got: {type(product)}"

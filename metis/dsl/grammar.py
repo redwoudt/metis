@@ -1,21 +1,14 @@
 """
 Grammar and canonical keys for the Metis Prompt DSL.
+
 The DSL is a sequence of bracketed key-value pairs:
 
     [key: value][key: value]...
 
-Minimal EBNF (kept simple by design):
-
-    prompt      ::= expression*
-    expression  ::= "[" key ":" value "]"
-    key         ::= IDENT                   ; canonical: persona|task|length|format|tone|source
-    value       ::= VALUE                   ; any run of characters without ']' (trimmed)
-
-Notes:
-- No nesting/conditionals (keep Interpreter example focused).
-- Keys are case-insensitive, canonicalized to lowercase.
-- Whitespace around separators is ignored.
+This grammar is intentionally minimal to keep the Interpreter
+Pattern focused and easy to reason about.
 """
+
 from typing import Final, Set
 
 EBNF: Final[str] = """
@@ -25,5 +18,19 @@ key         ::= IDENT
 value       ::= VALUE
 """
 
-# Canonical keys supported by core. Extensions may add via registry.
-KNOWN_KEYS: Set[str] = {"persona", "task", "length", "format", "tone", "source"}
+# Canonical keys supported by the DSL.
+# These are interpreted into a structured context dictionary.
+KNOWN_KEYS: Set[str] = {
+    # Prompt shaping
+    "persona",
+    "task",
+    "length",
+    "format",
+    "tone",
+    "source",
+
+    # Tool execution (Chapter 8)
+    "tool",
+    "args",
+    "tool_call",
+}

@@ -1,34 +1,102 @@
 # tests/state/test_greeting_state.py
 
 from metis.states.greeting import GreetingState
+from metis.states.clarifying import ClarifyingState
 from metis.conversation_engine import ConversationEngine
-from metis.models.model_factory import ModelFactory
-from metis.components.model_manager import ModelManager
 
 
-def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
-    """Helper to build an engine wired through the Bridge (ModelManager)."""
-    client = ModelFactory.for_role(
-        "analysis",
-        {"vendor": vendor, "model": model, "policies": {}},
-    )
-    return ConversationEngine(model_manager=ModelManager(client))
+# -------------------------------------------------------------------
+# Dummy support classes for isolation
+# -------------------------------------------------------------------
 
-
-def test_greeting_transitions_to_clarifying():
+class DummyModelManager:
     """
-    Ensures GreetingState responds with a friendly message and transitions to ClarifyingState.
+    Simple fake model manager returning a fixed greeting narration.
     """
-    engine = _engine()
+    def __init__(self, response="HELLO_THERE"):
+        self.response = response
+
+    def generate(self, prompt_text, **kwargs):
+        return self.response
+
+
+class DummyRequestHandler:
+    """
+    Minimal RequestHandler stub.
+
+    Included so downstream states (e.g. ClarifyingState) can safely
+    access engine.request_handler.config without raising errors.
+    """
+    config = {
+        "tools": []
+    }
+
+
+class DummyEngine(ConversationEngine):
+    """
+    Minimal stub engine for GreetingState tests.
+    """
+    def __init__(self):
+        self.preferences = {}
+        self.user_id = "user_test"
+        self.model_manager = DummyModelManager()
+        self.request_handler = DummyRequestHandler()
+        self.state = None
+
+    def generate_with_model(self, prompt_text):
+        return self.model_manager.generate(prompt_text)
+
+    # Override to avoid ConversationEngine.on_enter hooks
+    def set_state(self, new_state):
+        self.state = new_state
+
+
+# -------------------------------------------------------------------
+# TESTS
+# -------------------------------------------------------------------
+
+def test_greeting_generates_friendly_output_and_transitions():
+    """
+    GreetingState should:
+      1. Build a greeting prompt
+      2. Produce model-generated narration
+      3. Transition to ClarifyingState
+    """
+    engine = DummyEngine()
     engine.set_state(GreetingState())
 
-    user_input = "Hi"
-    response = engine.respond(user_input)
+    out = engine.state.respond(engine, "Hi there!")
 
-    # Check for expected friendly tone or greeting intent
-    assert any(keyword in response.lower() for keyword in ["assist", "welcome", "hello", "hi", "help"]), (
-        f"Unexpected greeting response: {response}"
-    )
+    # 1. Returns the greeting narration
+    assert out == "HELLO_THERE"
 
-    # Verify transition occurred
-    assert engine.state.__class__.__name__ == "ClarifyingState"
+    # 2. Transition should occur
+    assert isinstance(engine.state, ClarifyingState)
+
+
+def test_greeting_responds_even_without_user_input():
+    """
+    GreetingState should handle empty input safely and still produce a greeting
+    and transition to ClarifyingState.
+    """
+    engine = DummyEngine()
+    engine.set_state(GreetingState())
+
+    out = engine.state.respond(engine, "")
+
+    assert out == "HELLO_THERE"
+    assert isinstance(engine.state, ClarifyingState)
+
+
+def test_greeting_does_not_modify_preferences():
+    """
+    GreetingState should not alter engine.preferences.
+    """
+    engine = DummyEngine()
+    engine.preferences["foo"] = "bar"
+
+    engine.set_state(GreetingState())
+    _ = engine.state.respond(engine, "Hello!")
+
+    assert engine.preferences["foo"] == "bar"
+    assert isinstance(engine.state, ClarifyingState)

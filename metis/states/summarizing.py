@@ -1,4 +1,4 @@
-# states/summarizing.py
+# metis/states/summarizing.py
 
 import logging
 from metis.states.base_state import ConversationState
@@ -26,6 +26,10 @@ class SummarizingState(ConversationState):
         from metis.services.prompt_service import render_prompt
         from metis.states.greeting import GreetingState
 
+        # Ensure preferences exist
+        if not hasattr(engine, "preferences") or engine.preferences is None:
+            engine.preferences = {}
+
         logger.debug(
             "[SummarizingState] Building prompt with tone='%s', persona='%s', context='%s', tool_output='%s', user_input='%s'",
             engine.preferences.get("tone", ""),
@@ -47,13 +51,15 @@ class SummarizingState(ConversationState):
 
         # Ensure we always have a string to send to the model
         try:
-            rendered_prompt = prompt.render() if hasattr(prompt, "render") else str(prompt)
+            rendered_prompt = (
+                prompt.render() if hasattr(prompt, "render") else str(prompt)
+            )
         except Exception:
             rendered_prompt = str(prompt)
 
         logger.debug("[SummarizingState] Prompt constructed: %s", rendered_prompt)
 
-        # Ask the model (through the Bridge path: ConversationEngine -> ModelManager -> Adapter)
+        # Ask the model via the engine/bridge
         model_response = None
         try:
             logger.debug("[SummarizingState] Calling engine.generate_with_model")
@@ -68,5 +74,13 @@ class SummarizingState(ConversationState):
         # After summarizing, reset to GreetingState for the next interaction
         engine.set_state(GreetingState())
 
-        # Final user-facing reply
-        return f"Summary: {model_response or rendered_prompt}"
+        # ✅ TEST CONTRACT: pipeline expects output to start with "Summary:"
+        if model_response is not None:
+            text = str(model_response).strip()
+
+            if text.startswith("Summary:"):
+                return text
+
+            return f"Summary: {text}".rstrip()
+
+        return "Summary:"

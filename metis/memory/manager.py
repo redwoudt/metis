@@ -2,6 +2,8 @@
 
 import os
 import pickle
+from metis.memory.snapshot import ConversationSnapshot
+
 
 class MemoryManager:
     """
@@ -20,7 +22,8 @@ class MemoryManager:
         if os.path.exists(self._file_path):
             try:
                 with open(self._file_path, "rb") as f:
-                    return pickle.load(f)
+                    snapshots = pickle.load(f)
+                    return snapshots if isinstance(snapshots, list) else []
             except Exception:
                 return []
         return []
@@ -38,6 +41,8 @@ class MemoryManager:
 
         :param snapshot: A ConversationSnapshot instance created by the Originator.
         """
+        if snapshot is None:
+            return
         self._snapshots.append(snapshot)
         self._save_to_disk()
 
@@ -45,13 +50,15 @@ class MemoryManager:
         """
         Restore the most recent snapshot from the stack.
 
-        :return: The latest snapshot if available; otherwise None.
+        :return: The latest snapshot if available; otherwise an empty ConversationSnapshot.
         """
         if self._snapshots:
             snapshot = self._snapshots.pop()
             self._save_to_disk()
             return snapshot
-        return None
+
+        # IMPORTANT: Return an empty snapshot instead of None
+        return ConversationSnapshot({})
 
     def clear(self):
         """

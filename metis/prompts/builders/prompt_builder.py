@@ -1,26 +1,12 @@
 """
 PromptBuilder is responsible for creating structured, context-aware prompts for model input.
-
-How it works:
-- Accepts user session data and new input.
-- Infers task type from input (e.g., summarization, explanation, planning).
-- Sanitizes input and history to remove unnecessary whitespace and escape HTML.
-- Formats prompts using task-specific templates or JSON.
-- Returns a clean, model-friendly prompt for downstream generation.
-
-Expansion Ideas:
-- Support for localization or multilingual prompt templates.
-- Allow task overrides or manual task setting.
-- Integrate prompt validation and token estimation.
-- Add templates for new task types (e.g., classification, code generation).
-- Enable prompt versioning for A/B testing or tuning.
 """
 
 import html
 import re
+import logging
 from metis.prompts.prompt import Prompt
 from metis.dsl import interpret_prompt_dsl, PromptContext
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -29,61 +15,81 @@ class PromptBuilder:
     def __init__(self, format_style="default"):
         self.format_style = format_style
 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
     def build(self, session, user_input: str) -> str:
         user_id = getattr(session, "user_id", "unknown")
         history = getattr(session, "history", [])
         user_input = self._sanitize(user_input)
 
-        # Infer task type
         task = self._infer_task_type(user_input)
 
-        logger.info(f"[PromptBuilder] build() called for user_id={user_id}, task={task}")
-        logger.info(f"[PromptBuilder] format_style={self.format_style}")
-        logger.info(f"[PromptBuilder] user_input={user_input}")
+        logger.info(f"[PromptBuilder] build() user_id={user_id}, task={task}")
 
-        # Format session header and history
         header = f"[Session: {user_id}]"
-        if history:
-            formatted_history = "\n".join(
-                f"User: {self._sanitize(prompt)}\nSystem: {self._sanitize(response)}"
-                for prompt, response in history[-3:]
-            )
-            context = f"\n\nPrevious interactions:\n{formatted_history}\n"
-        else:
-            context = ""
+        context = self._format_history(history)
 
-        # Format prompt
         if self.format_style == "json":
             return self._format_json(user_id, history, user_input, task)
-        else:
-            return self._apply_task_template(task, header, context, user_input)
+
+        return self._apply_task_template(task, header, context, user_input)
 
     def build_from_dsl(self, session, dsl_text: str) -> str:
-        """
-        Parse [key: value] blocks using the DSL interpreter and return a formatted prompt string.
-        Does not break existing callers that use plain text.
-        """
-        logger.info(f"[PromptBuilder] build_from_dsl() called with dsl_text={dsl_text}")
+        logger.info(f"[PromptBuilder] build_from_dsl() called")
         ctx: PromptContext = interpret_prompt_dsl(dsl_text)
         return self._apply_context_template(session, ctx)
 
     def build_prompt_from_dsl(self, session, dsl_text: str) -> Prompt:
-        """
-        Convenience: build a Prompt object directly from DSL input.
-        """
         prompt_str = self.build_from_dsl(session, dsl_text)
         return Prompt(user_input=prompt_str)
 
     def build_prompt(self, session, user_input: str) -> Prompt:
-        """
-        Converts legacy string-based prompt into a Prompt object for compatibility with new system.
-        """
-        logger.info(f"[PromptBuilder] build_prompt() called for session={getattr(session, 'user_id', 'unknown')}")
         prompt_str = self.build(session, user_input)
         return Prompt(user_input=prompt_str)
 
+    # ------------------------------------------------------------------
+    # History handling (FIXED)
+    # ------------------------------------------------------------------
+    def _format_history(self, history) -> str:
+        """
+        Safely formats history entries.
+
+        Supports:
+        - legacy (prompt, response) tuples
+        - message-like objects with .role / .content
+        """
+        if not history:
+            return ""
+
+        lines = []
+
+        for entry in history[-3:]:
+            # New message-style objects
+            if hasattr(entry, "role") and hasattr(entry, "content"):
+                role = entry.role.capitalize()
+                content = self._sanitize(entry.content)
+                lines.append(f"{role}: {content}")
+                continue
+
+            # Legacy tuple format: (prompt, response)
+            if isinstance(entry, (tuple, list)) and len(entry) >= 2:
+                user, system = entry[0], entry[1]
+                lines.append(f"User: {self._sanitize(str(user))}")
+                lines.append(f"System: {self._sanitize(str(system))}")
+                continue
+
+            # Fallback: stringify safely
+            lines.append(f"Context: {self._sanitize(str(entry))}")
+
+        formatted = "\n".join(lines)
+        return f"\n\nPrevious interactions:\n{formatted}\n"
+
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
     def _sanitize(self, text: str) -> str:
-        text = text.strip()
+        text = (text or "").strip()
         text = html.escape(text)
         text = re.sub(r"\s+", " ", text)
         return text
@@ -91,72 +97,71 @@ class PromptBuilder:
     def _infer_task_type(self, user_input: str) -> str:
         text = user_input.lower()
         if "summarize" in text:
-            task = "summarization"
-        elif "clarify" in text or "clarification" in text:
-            task = "clarifying"
-        elif "execute" in text or "execution" in text:
-            task = "executing"
-        elif any(word in text for word in ["hi", "hello", "hey", "greetings"]):
-            task = "greeting"
-        else:
-            task = "general"
-        logger.info(f"[PromptBuilder] _infer_task_type() determined task={task}")
-        return task
+            return "summarization"
+        if "clarify" in text:
+            return "clarifying"
+        if "execute" in text:
+            return "executing"
+        if any(w in text for w in ("hi", "hello", "hey", "greetings")):
+            return "greeting"
+        return "general"
 
+    # ------------------------------------------------------------------
+    # Templates
+    # ------------------------------------------------------------------
     def _apply_context_template(self, session, ctx: PromptContext) -> str:
-        logger.info(f"[PromptBuilder] _apply_context_template() with context fields: {ctx}")
         user_id = getattr(session, "user_id", "unknown")
         history = getattr(session, "history", [])
 
         header = f"[Session: {user_id}]"
-        if history:
-            formatted_history = "\n".join(
-                f"User: {self._sanitize(prompt)}\nSystem: {self._sanitize(response)}"
-                for prompt, response in history[-3:]
-            )
-            context = f"\n\nPrevious interactions:\n{formatted_history}\n"
-        else:
-            context = ""
+        context = self._format_history(history)
 
-        # Map DSL fields into a friendly body similar to existing templates
         parts = []
-        if ctx.get("persona"):
-            parts.append(f"Persona: {self._sanitize(ctx['persona'])}")
-        if ctx.get("tone"):
-            parts.append(f"Tone: {self._sanitize(ctx['tone'])}")
-        if ctx.get("task"):
-            parts.append(f"Task: {self._sanitize(ctx['task'])}")
-        if ctx.get("source"):
-            parts.append(f"Source: {self._sanitize(ctx['source'])}")
-        if ctx.get("length"):
-            parts.append(f"Length: {self._sanitize(ctx['length'])}")
-        if ctx.get("format"):
-            parts.append(f"Format: {self._sanitize(ctx['format'])}")
+        for key in ("persona", "tone", "task", "source", "length", "format"):
+            if ctx.get(key):
+                parts.append(f"{key.capitalize()}: {self._sanitize(ctx[key])}")
 
         body = "\n".join(parts) if parts else "Current input:"
         return f"{header}{context}\n\n{body}"
 
     def _apply_task_template(self, task, header, context, user_input):
-        logger.info(f"[PromptBuilder] _apply_task_template() using task={task}")
-        logger.info(f"[PromptBuilder] header={header}, context={context}, user_input={user_input}")
         if task == "summarization":
             return f"{header}{context}\n\nTask: Summarize the following input.\n{user_input}"
-        elif task == "clarifying":
-            return f"{header}{context}\n\nTask: Clarify the following statement or request:\n{user_input}"
-        elif task == "executing":
-            return f"{header}{context}\n\nTask: Execute the following instruction or command:\n{user_input}"
-        elif task == "greeting":
-            return f"{header}{context}\n\nTask: Generate a friendly greeting message to initiate the conversation.\n{user_input}"
+        if task == "clarifying":
+            return f"{header}{context}\n\nTask: Clarify the following statement:\n{user_input}"
+        if task == "executing":
+            return f"{header}{context}\n\nTask: Execute the following instruction:\n{user_input}"
+        if task == "greeting":
+            return (
+                f"{header}{context}\n\n"
+                "Task: Generate a friendly greeting message.\n"
+                f"{user_input}"
+            )
         return f"{header}{context}\n\nCurrent input:\n{user_input}"
 
     def _format_json(self, user_id, history, user_input, task):
-        logger.info(f"[PromptBuilder] _format_json() called for user_id={user_id}, task={task}")
-        context = [
-            {"user": self._sanitize(p), "system": self._sanitize(r)}
-            for p, r in history[-3:]
-        ]
+        context = []
+
+        for entry in history[-3:]:
+            if isinstance(entry, (tuple, list)) and len(entry) >= 2:
+                context.append(
+                    {
+                        "user": self._sanitize(str(entry[0])),
+                        "system": self._sanitize(str(entry[1])),
+                    }
+                )
+            elif hasattr(entry, "role") and hasattr(entry, "content"):
+                context.append(
+                    {
+                        entry.role.lower(): self._sanitize(entry.content)
+                    }
+                )
+
         return (
-            f'{{\n  "session": "{user_id}",\n  '
-            f'"task": "{task}",\n  "context": {context},\n  '
-            f'"input": "{self._sanitize(user_input)}"\n}}'
+            "{\n"
+            f'  "session": "{user_id}",\n'
+            f'  "task": "{task}",\n'
+            f'  "context": {context},\n'
+            f'  "input": "{self._sanitize(user_input)}"\n'
+            "}"
         )

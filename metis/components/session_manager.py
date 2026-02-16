@@ -15,7 +15,10 @@ Expansion Ideas:
 """
 import os
 import pickle
+import logging
 from metis.components.session import Session
+
+logger = logging.getLogger(__name__)
 
 class SessionManager:
     def __init__(self, file_path="sessions.pkl"):
@@ -33,18 +36,66 @@ class SessionManager:
         if os.path.exists(self.file_path):
             try:
                 with open(self.file_path, "rb") as f:
-                    return pickle.load(f)
+                    data = pickle.load(f)
+
+                # Legacy format: {user_id: Session(...)}
+                if isinstance(data, dict) and data:
+                    sample_val = next(iter(data.values()))
+                    if isinstance(sample_val, Session):
+                        return data
+
+                # New persisted format: {user_id: {"user_id": ..., "history": ...}}
+                if isinstance(data, dict):
+                    restored: dict[str, Session] = {}
+                    for uid, payload in data.items():
+                        if isinstance(payload, Session):
+                            restored[uid] = payload
+                            continue
+                        if isinstance(payload, dict):
+                            s = Session(user_id=payload.get("user_id", uid))
+                            s.history = payload.get("history", [])
+                            restored[uid] = s
+                    return restored
+
+                return {}
             except (EOFError, pickle.UnpicklingError):
-                print(f"Warning: Session file {self.file_path} is corrupted or empty. Starting with fresh memory.")
+                logger.warning(
+                    "Session file %s is corrupted or empty. Starting with fresh memory.",
+                    self.file_path,
+                )
                 return {}
         return {}
 
+    def _sanitize_session_for_pickle(self, session):
+        """
+        NOTE: This should only be used on copies and must not mutate live in-memory sessions.
+        Remove or nullify non-pickleable runtime objects from a session before pickling.
+        """
+        engine = getattr(session, "engine", None)
+        if engine:
+            if hasattr(engine, "model_manager"):
+                engine.model_manager = None
+            if hasattr(engine, "model"):
+                engine.model = None
+            if hasattr(engine, "request_handler"):
+                delattr(engine, "request_handler")
+
     def _save_sessions(self):
+        """Save the current sessions to disk.
+
+        Important: Do NOT mutate in-memory sessions (they may hold runtime objects like engines).
+        We persist only pickle-safe data and reconstruct Sessions on load.
         """
-        Save the current in-memory sessions to disk using pickle.
-        """
+        persisted: dict[str, dict] = {}
+        for uid, session in self.memory.items():
+            # Persist only safe fields.
+            persisted[uid] = {
+                "user_id": getattr(session, "user_id", uid),
+                "history": getattr(session, "history", []),
+            }
+
         with open(self.file_path, "wb") as f:
-            pickle.dump(self.memory, f)
+            pickle.dump(persisted, f)
 
     def load_or_create(self, user_id):
         """
