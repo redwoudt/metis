@@ -17,14 +17,25 @@ logger = logging.getLogger(__name__)
 # Optional: support different prompt strategies from one place
 TEMPLATE_MAP = {
     "greeting": GreetingPrompt,
+
+    # 🔹 Support BOTH keys for safety across states/tests
     "executing": ExecutingPrompt,
+    "execute": ExecutingPrompt,  # <-- FIX ADDED
+
     "summarize": SummarizationPrompt,
     "plan": PlanningPrompt,
     "clarifying": ClarifyingPrompt,
     "critique": CritiquePrompt,
 }
 
-def generate_prompt(prompt_type: str, user_input: str, context: str = "", tool_output: str = "", tone: str = "", persona: str = "") -> Prompt:
+def generate_prompt(
+    prompt_type: str,
+    user_input: str,
+    context: str = "",
+    tool_output: str = "",
+    tone: str = "",
+    persona: str = ""
+) -> Prompt:
     """
     Entry point for generating a prompt object based on a known prompt_type.
     Returns a fully constructed Prompt object.
@@ -51,7 +62,15 @@ def generate_prompt(prompt_type: str, user_input: str, context: str = "", tool_o
     logger.debug(f"[generate_prompt] Created prompt: {template}")
     return prompt_obj
 
-def render_prompt(prompt_type: str, user_input: str, context: str = "", tool_output: str = "", tone: str = "", persona: str = "") -> str:
+
+def render_prompt(
+    prompt_type: str,
+    user_input: str,
+    context: str = "",
+    tool_output: str = "",
+    tone: str = "",
+    persona: str = ""
+) -> str:
     """
     Wrapper that generates and returns the final rendered prompt string.
     """
@@ -66,6 +85,7 @@ def render_prompt(prompt_type: str, user_input: str, context: str = "", tool_out
     rendered = prompt.render()
     logger.debug(f"[render_prompt] Final rendered prompt: {rendered}")
     return rendered
+
 
 class PromptFormatter:
     """

@@ -20,14 +20,27 @@ class DummyModelManager:
         return self.response
 
 
+class DummyRequestHandler:
+    """
+    Minimal RequestHandler stub.
+
+    Included so downstream states (e.g. ClarifyingState) can safely
+    access engine.request_handler.config without raising errors.
+    """
+    config = {
+        "tools": []
+    }
+
+
 class DummyEngine(ConversationEngine):
     """
     Minimal stub engine for GreetingState tests.
     """
     def __init__(self):
         self.preferences = {}
-        self.user_id = "tester"
+        self.user_id = "user_test"
         self.model_manager = DummyModelManager()
+        self.request_handler = DummyRequestHandler()
         self.state = None
 
     def generate_with_model(self, prompt_text):

@@ -1,4 +1,4 @@
-from metis.handlers.auditlog import AuditLogHandler
+from metis.handlers.audit import AuditLogHandler
 from metis.commands.base import ToolContext, ToolCommand
 
 

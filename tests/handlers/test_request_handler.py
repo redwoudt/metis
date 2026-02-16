@@ -3,14 +3,22 @@ Updated tests for RequestHandler after migrating to:
 - Command Pattern
 - Chain of Responsibility tool pipeline
 - DSL-based tool/task selection
-- New RequestHandler and ExecutingState behavior
+- New RequestHandler and ConversationEngine behavior
+
+Key change in this file:
+- Avoid any references to the *old* engine API (e.g. `engine.request_handler`).
+  Tests should interact with RequestHandler directly, or with the engine’s public API
+  (e.g. `engine.get_model()`), not internal wiring.
 """
 
 import pytest
 from unittest.mock import MagicMock
+
 from metis.handler import RequestHandler
 from metis.config import Config
 from metis.states.greeting import GreetingState
+from metis.models.model_proxy import ModelProxy
+
 from tests.test_utils import (
     MockPromptStrategy,
     AllowAllPolicy,
@@ -21,10 +29,9 @@ from tests.test_utils import (
     factory_cache,
     reset_cached_model_factory,
     reset_rate_limited_model_factory,
-    mock_model_factory,
     mock_singleton_factory,
 )
-from metis.models.model_proxy import ModelProxy
+
 from tests.test_utils import LoggingMockModel
 
 
@@ -33,7 +40,13 @@ from tests.test_utils import LoggingMockModel
 # -------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def clear_session_manager_state():
+    """
+    The SessionManager is implemented as a singleton in Mêtis.
+    These tests mutate session state (state/engine), so we must reset between tests
+    to avoid order-dependent failures.
+    """
     from metis.components.session_manager import SessionManager
+
     manager = SessionManager()
     sessions = getattr(manager, "_sessions", {})
     for s in sessions.values():
@@ -48,13 +61,19 @@ def clear_session_manager_state():
 # BASIC SUCCESS TEST
 # -------------------------------------------------------------------------
 def test_handle_prompt_success(monkeypatch):
+    """
+    Sanity test:
+    - Given a RequestHandler configured to force GreetingState
+    - When we handle a prompt
+    - Then we get a friendly response that echoes the user input (per mock model)
+    """
     setup_test_registry(monkeypatch)
 
     # Strategy forces GreetingState
     monkeypatch.setattr(
         MockPromptStrategy,
         "determine_state_name",
-        lambda self, text, ctx: "greeting"
+        lambda self, text, ctx: "greeting",
     )
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
@@ -69,19 +88,22 @@ def test_handle_prompt_success(monkeypatch):
             "defaults": {},
             "policies": {},
             "factory": factory_greeting,
-        }
+        },
     )
 
     response = handler.handle_prompt("user_123", "Tell me something nice")
 
-    assert "friendly" in response
-    assert "Tell me something nice" in response
+    assert "friendly" in response.lower()
+    assert "tell me something nice" in response.lower()
 
 
 # -------------------------------------------------------------------------
 # POLICY ENFORCEMENT
 # -------------------------------------------------------------------------
 def test_policy_enforcement_denied():
+    """
+    If the policy denies the request, RequestHandler should raise PermissionError.
+    """
     handler = RequestHandler(policy=DenyAllPolicy())
     with pytest.raises(PermissionError):
         handler.handle_prompt("user_123", "Forbidden access")
@@ -91,6 +113,10 @@ def test_policy_enforcement_denied():
 # SESSION LIFECYCLE + PROMPT BUILDING
 # -------------------------------------------------------------------------
 def test_session_lifecycle_and_prompt_building(monkeypatch):
+    """
+    Ensure we can create/load a session and route a prompt through the pipeline.
+    This is intentionally high-level (we don’t assert internal engine wiring).
+    """
     setup_test_registry(monkeypatch)
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
 
@@ -99,7 +125,7 @@ def test_session_lifecycle_and_prompt_building(monkeypatch):
 
     r = handler.handle_prompt(user_id, prompt)
 
-    # Should have summarization intent
+    assert isinstance(r, str)
     assert "summarize" in r.lower()
     assert "yesterday" in r.lower()
 
@@ -108,14 +134,24 @@ def test_session_lifecycle_and_prompt_building(monkeypatch):
 # MODEL FACTORY IS USED — ModelProxy appears
 # -------------------------------------------------------------------------
 def test_model_factory_is_used(monkeypatch):
+    """
+    Regression test for the refactor:
+    - We no longer reach into `engine.request_handler` (old API).
+    - We validate behavior through the engine public surface (`engine.get_model()`).
+    """
     setup_test_registry(monkeypatch)
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
 
-    handler.handle_prompt("u_proxy", "[task:mock] Summarize something")
-    handler.handle_prompt("u_proxy", "[task:mock] Summarize something")
+    # Use the same user_id consistently (avoid creating a different session by mistake)
+    user_id = "user_proxy"
 
-    session = handler.session_manager.load_or_create("u_proxy")
+    handler.handle_prompt(user_id, "[task:mock] Summarize something")
+    handler.handle_prompt(user_id, "[task:mock] Summarize something")
+
+    session = handler.session_manager.load_or_create(user_id)
+
+    assert session.engine is not None, "Expected ConversationEngine to be created on first handle_prompt()"
     model_used = session.engine.get_model()
 
     assert isinstance(model_used, ModelProxy)
@@ -125,10 +161,13 @@ def test_model_factory_is_used(monkeypatch):
 # SINGLETON MODEL REUSE
 # -------------------------------------------------------------------------
 def test_singleton_model_is_reused(monkeypatch):
+    """
+    Ensure a singleton-configured model is instantiated once and reused.
+    """
     from metis.models import singleton_cache
+
     singleton_cache._instance_cache.clear()
 
-    # Prepare fake registry entries
     monkeypatch.setitem(
         Config.MODEL_REGISTRY,
         "singleton-test",
@@ -143,6 +182,7 @@ def test_singleton_model_is_reused(monkeypatch):
 
     # Reset instantiation count
     from tests.test_utils import MockModel
+
     MockModel.instantiation_count = 0
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
@@ -157,6 +197,9 @@ def test_singleton_model_is_reused(monkeypatch):
 # TRACE LOGGING
 # -------------------------------------------------------------------------
 def test_proxy_logs_prompt(monkeypatch, caplog):
+    """
+    If the model policies enable logging, the proxy should emit a 'Prompt constructed:' log.
+    """
     setup_test_registry(monkeypatch)
 
     monkeypatch.setitem(
@@ -168,10 +211,12 @@ def test_proxy_logs_prompt(monkeypatch, caplog):
             "defaults": {},
             "policies": {"log": True},
             "factory": factory_logging,
-        }
+        },
     )
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
+
+    # Force a known starting state for determinism
     session = handler.session_manager.load_or_create("user_log")
     session.state = GreetingState()
     session.engine = None
@@ -188,6 +233,10 @@ def test_proxy_logs_prompt(monkeypatch, caplog):
 # -------------------------------------------------------------------------
 @pytest.mark.usefixtures("clear_session_manager_state")
 def test_proxy_caches_responses(monkeypatch):
+    """
+    If caching is enabled, repeated identical prompts should reuse the same backend
+    behind the proxy model.
+    """
     reset_cached_model_factory()
     setup_test_registry(monkeypatch)
 
@@ -200,18 +249,18 @@ def test_proxy_caches_responses(monkeypatch):
             "defaults": {},
             "policies": {"cache": True},
             "factory": factory_cache,
-        }
+        },
     )
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
+    user_id = "user_cache"
 
-    handler.handle_prompt("user_cache", "[task:cache-test] Say hi")
-    first_engine = handler.session_manager.load_or_create("user_cache").engine
+    handler.handle_prompt(user_id, "[task:cache-test] Say hi")
+    first_engine = handler.session_manager.load_or_create(user_id).engine
     first_model = first_engine.get_model()
 
-    # Second identical call should reuse same proxy backend
-    handler.handle_prompt("user_cache", "[task:cache-test] Say hi")
-    second_engine = handler.session_manager.load_or_create("user_cache").engine
+    handler.handle_prompt(user_id, "[task:cache-test] Say hi")
+    second_engine = handler.session_manager.load_or_create(user_id).engine
     second_model = second_engine.get_model()
 
     assert first_model.backend is second_model.backend
@@ -222,8 +271,10 @@ def test_proxy_caches_responses(monkeypatch):
 # -------------------------------------------------------------------------
 @pytest.mark.usefixtures("clear_session_manager_state")
 def test_proxy_rate_limit(monkeypatch, caplog):
-    import logging
-
+    """
+    Rate limiting should log a warning when calls happen too quickly.
+    This is behavior-level: we do not assert internal engine plumbing.
+    """
     # Fake time for deterministic rate limiting
     fake_time = [1000.0]
 
@@ -231,23 +282,24 @@ def test_proxy_rate_limit(monkeypatch, caplog):
         return fake_time[0]
 
     monkeypatch.setattr("time.time", fake_time_fn)
+
     reset_rate_limited_model_factory()
     setup_test_registry(monkeypatch)
 
     caplog.set_level("WARNING", logger="metis.models.model_proxy")
 
     handler = RequestHandler(strategy=MockPromptStrategy(), policy=AllowAllPolicy())
+    user_id = "user_rate"
 
     # First call OK
-    handler.handle_prompt("user_rate", "[task:rate-limit-test] first call")
+    handler.handle_prompt(user_id, "[task:rate-limit-test] first call")
 
-    # Same proxy instance reused
-    session = handler.session_manager.load_or_create("user_rate")
+    # Same proxy instance reused (engine should stay attached to the session)
+    session = handler.session_manager.load_or_create(user_id)
     proxy_model = session.engine.get_model()
-
     assert proxy_model is session.engine.get_model()
 
     # Do NOT advance time → immediate second call triggers rate limit
-    handler.handle_prompt("user_rate", "[task:rate-limit-test] second call")
+    handler.handle_prompt(user_id, "[task:rate-limit-test] second call")
 
     assert any("Rate limit exceeded" in r.message for r in caplog.records)

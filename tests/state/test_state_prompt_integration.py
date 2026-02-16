@@ -25,11 +25,19 @@ class DummyModelManager:
 
 
 class DummyHandler:
-    """Fake tool executor to verify call behavior."""
+    """
+    Fake RequestHandler / tool executor.
+
+    Includes a minimal `config` attribute so ClarifyingState
+    can safely inspect available tools.
+    """
     def __init__(self):
         self.calls = []
+        self.config = {
+            "tools": []
+        }
 
-    def execute_tool(self, tool_name, args, user, services):
+    def execute_tool(self, tool_name, args, user=None, services=None):
         self.calls.append((tool_name, args, user))
         return f"RESULT:{tool_name}:{args}"
 
@@ -78,7 +86,7 @@ def test_executing_state_runs_tool_and_transitions():
     out = engine.state.respond(engine, "Run search")
 
     # Model narration is returned
-    assert out == "EXECUTION_NARRATION"
+    assert out == "Executing: EXECUTION_NARRATION"
 
     # Tool executed
     assert engine.preferences["tool_output"] == "RESULT:search_web:{'query': 'malbec'}"
@@ -96,8 +104,9 @@ def test_executing_state_handles_no_tool_safely():
 
     out = engine.state.respond(engine, "Nothing to run")
 
-    assert out == "NO_TOOL_NARRATION"
-    assert "tool_output" not in engine.preferences
+    assert out == "Executing: NO_TOOL_NARRATION"
+    # Post-refactor behavior: tool_output is explicitly set to None
+    assert engine.preferences.get("tool_output") is None
     assert isinstance(engine.state, SummarizingState)
 
 
@@ -107,7 +116,8 @@ def test_summarizing_state_generates_summary_and_transitions():
 
     out = engine.state.respond(engine, "Wrap up")
 
-    assert out == "SUMMARY_TEXT"
+    # Post-refactor behavior: raw model output (no prefix)
+    assert out == "Summary: SUMMARY_TEXT"
     assert isinstance(engine.state, GreetingState)
 
 

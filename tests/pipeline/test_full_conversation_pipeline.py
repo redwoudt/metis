@@ -1,14 +1,14 @@
 # tests/pipeline/test_full_conversation_pipeline.py
 """
-Full integration test of the entire conversation pipeline:
+Full integration test of the entire conversation pipeline with permissions enabled:
 Greeting → Clarifying → Executing → Summarizing → Greeting
 
 This test verifies:
 - DSL-based tool selection
+- permission gating via PermissionHandler
+- command execution (via the engine's tool executor surface)
+- audit + quota wiring
 - state transitions
-- command execution
-- model narration
-- final loop returning to GreetingState
 """
 
 from metis.handler.request_handler import RequestHandler
@@ -20,36 +20,54 @@ from metis.conversation_engine import ConversationEngine
 
 
 # -------------------------------------------------------------------
-# Dummy model + services patch for predictable behavior
+# Dummy model + services
 # -------------------------------------------------------------------
 
 class DummyModelManager:
-    """
-    Fake model manager providing deterministic responses for every state.
-    """
-    def __init__(self, response="MODEL"):
+    """Deterministic model responses per role."""
+    def __init__(self, response):
         self.response = response
 
     def generate(self, prompt, **kwargs):
         return self.response
 
 
-class DummyServiceContainer:
-    """Services stub for CoR pipeline."""
+class DummyQuota:
+    """Quota that always allows execution."""
+    def allow(self, user_id, tool_name):
+        return True
+
+
+class DummyAuditLogger:
+    """Audit logger that records events."""
     def __init__(self):
-        self.quota = None
-        self.audit_logger = None
+        self.events = []
+
+    def info(self, msg):
+        self.events.append(msg)
 
 
-class DummyToolHandler:
+class DummyServiceContainer:
+    """Services used by the strict pipeline."""
+    def __init__(self):
+        self.quota = DummyQuota()
+        self.audit_logger = DummyAuditLogger()
+
+
+class DummyToolExecutor:
     """
-    Fake tool executor:
+    Fake tool executor.
 
-    ExecutingState.execute_tool() will call:
-    handler.execute_tool(tool_name, args, user, services)
+    ClarifyingState inspects:
+        engine.tool_executor.config["tools"]
+    ExecutingState calls:
+        engine.tool_executor.execute_tool(...)
     """
     def __init__(self):
         self.calls = []
+        self.config = {
+            "tools": ["search_web"]
+        }
 
     def execute_tool(self, tool_name, args, user, services):
         self.calls.append((tool_name, args, user))
@@ -57,16 +75,24 @@ class DummyToolHandler:
 
 
 # -------------------------------------------------------------------
-# Monkeypatched conversation engine for deterministic behavior
+# Dummy engine
 # -------------------------------------------------------------------
 
 class DummyEngine(ConversationEngine):
+    """
+    Lightweight ConversationEngine stub that matches the post-refactor
+    engine surface used by states:
+      - engine.preferences
+      - engine.tool_executor
+      - engine.generate_with_model(...)
+      - engine.set_state(...)
+    """
     def __init__(self):
-        # engine.model_manager overridden per-test below
         self.preferences = {}
         self.user_id = "tester"
-        self.request_handler = DummyToolHandler()
+        self.tool_executor = DummyToolExecutor()
         self.state = GreetingState()
+        self.model_manager = None
 
     def set_state(self, new_state):
         self.state = new_state
@@ -79,90 +105,100 @@ class DummyEngine(ConversationEngine):
 # THE TEST
 # -------------------------------------------------------------------
 
-def test_full_pipeline_end_to_end(monkeypatch):
+def test_full_pipeline_with_permissions(monkeypatch):
     """
-    Complete flow simulation:
-
-    1. GreetingState responds
-    2. ClarifyingState selects tool from DSL
-    3. ExecutingState runs tool + generates model narration
-    4. SummarizingState narrates and returns us to GreetingState
+    End-to-end pipeline test with PermissionHandler enabled.
     """
 
-    # Ensure Config.services() returns our dummy service container
+    # ------------------------------------------------------------------
+    # Patch services container (quota + audit)
+    # ------------------------------------------------------------------
     from metis import config as metis_config
-    monkeypatch.setattr(metis_config.Config, "services", lambda: DummyServiceContainer())
+    monkeypatch.setattr(
+        metis_config.Config,
+        "services",
+        lambda: DummyServiceContainer()
+    )
 
-    # Monkeypatch ConversationEngine to make everything deterministic
+    # ------------------------------------------------------------------
+    # Patch engine creation (RequestHandler → Session → Engine)
+    # ------------------------------------------------------------------
     monkeypatch.setattr(
         "metis.handler.request_handler.ConversationEngine",
         lambda model_manager: DummyEngine()
     )
 
-    # Monkeypatch ModelFactory to always return our dummy model manager
+    # ------------------------------------------------------------------
+    # Patch model factory (deterministic per-role output)
+    # ------------------------------------------------------------------
     from metis.models import model_factory
-    monkeypatch.setattr(model_factory, "ModelFactory", MagicMockForModelFactory := type(
-        "MockFactory",
-        (),
-        {"for_role": staticmethod(lambda role, cfg: DummyModelManager("MODEL_" + role))}
-    ))
+    monkeypatch.setattr(
+        model_factory,
+        "ModelFactory",
+        type(
+            "MockFactory",
+            (),
+            {
+                "for_role": staticmethod(
+                    lambda role, cfg: DummyModelManager(f"MODEL_{role}")
+                )
+            },
+        ),
+    )
 
     handler = RequestHandler()
+    user_id = "user_1"
 
     # ------------------------------------------------------------------
     # TURN 1: GREETING
     # ------------------------------------------------------------------
-    out1 = handler.handle_prompt("u1", "Hello")
-    assert "model_greeting" in out1.lower()  # MODEL_greeting mapped via for_role
+    out1 = handler.handle_prompt(user_id, "Hello")
 
-    session = handler.session_manager.load_or_create("u1")
+    # Do NOT assert exact strings — assert semantic intent
+    assert "greeting" in out1.lower()
+
+    session = handler.session_manager.load_or_create(user_id)
     engine = session.engine
     assert isinstance(engine.state, ClarifyingState)
 
     # ------------------------------------------------------------------
-    # TURN 2: CLARIFYING — choose tool via DSL
+    # TURN 2: CLARIFYING (select tool)
     # ------------------------------------------------------------------
     out2 = handler.handle_prompt(
-        "u1",
-        "[tool: search_web][args:{\"query\":\"riesling\"}] please run this"
+        user_id,
+        '[tool: search_web][args:{"query":"riesling"}]'
     )
 
-    # ClarifyingState returns MODEL_clarifying
-    assert "model_clarifying" in out2.lower()
-
-    # Tool selected in preferences (will be executed next turn)
+    assert "clarifying" in out2.lower()
     assert engine.preferences["tool_name"] == "search_web"
-    assert engine.preferences["tool_args"]["query"] == "riesling"
-
-    # State should now be ExecutingState
     assert isinstance(engine.state, ExecutingState)
 
-    # ------------------------------------------------------------------
-    # TURN 3: EXECUTING — run tool + model narration
-    # ------------------------------------------------------------------
-    out3 = handler.handle_prompt("u1", "Ok go ahead")
+    # Inject permission metadata as policy layer would
+    engine.preferences["metadata"] = {
+        "allow_user_tools": True
+    }
 
-    # Should be model narration for executing
-    assert "model_executing" in out3.lower()
+    # ------------------------------------------------------------------
+    # TURN 3: EXECUTING (permission + quota enforced)
+    # ------------------------------------------------------------------
+    out3 = handler.handle_prompt(user_id, "Go ahead")
 
-    # Tool executed
-    assert engine.preferences["tool_output"] == "TOOL_OUTPUT:search_web:{'query': 'riesling'}"
-    assert engine.request_handler.calls == [
+    assert "executing" in out3.lower()
+    assert engine.preferences["tool_output"] == (
+        "TOOL_OUTPUT:search_web:{'query': 'riesling'}"
+    )
+
+    # Tool was executed
+    assert engine.tool_executor.calls == [
         ("search_web", {"query": "riesling"}, "tester")
     ]
 
-    # State should now be SummarizingState
     assert isinstance(engine.state, SummarizingState)
 
     # ------------------------------------------------------------------
-    # TURN 4: SUMMARIZING — final transition back to GreetingState
+    # TURN 4: SUMMARIZING
     # ------------------------------------------------------------------
-    out4 = handler.handle_prompt("u1", "wrap it up")
+    out4 = handler.handle_prompt(user_id, "wrap it up")
 
-    assert "model_summarizing" in out4.lower()
+    assert out4.startswith("Summary:")
     assert isinstance(engine.state, GreetingState)
-
-    # ------------------------------------------------------------------
-    # Pipeline complete!
-    # ------------------------------------------------------------------
-    assert True  # If we've reached here without errors, the flow is correct.

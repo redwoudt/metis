@@ -23,9 +23,15 @@ class DummyModelManager:
 class DummyHandler:
     """
     Simulates RequestHandler.execute_tool().
+
+    We also provide a minimal `config` attribute to match the
+    refactored RequestHandler contract.
     """
     def __init__(self):
         self.calls = []
+        self.config = {
+            "tools": []  # present for consistency with ClarifyingState
+        }
 
     def execute_tool(self, tool_name, args, user, services):
         self.calls.append((tool_name, args, user))
@@ -37,7 +43,8 @@ class DummyEngine(ConversationEngine):
     Minimal engine for ExecutingState testing:
     - Has preferences
     - Has user_id
-    - Has model_manager + request_handler
+    - Has model_manager
+    - Has request_handler (with config)
     """
 
     def __init__(self):
@@ -45,12 +52,12 @@ class DummyEngine(ConversationEngine):
         self.user_id = "tester"
         self.request_handler = DummyHandler()
         self.model_manager = DummyModelManager()
+        self.state = None
 
     def generate_with_model(self, prompt_text):
         return self.model_manager.generate(prompt_text)
 
-    # We override state setter only because real ConversationEngine
-    # triggers on_enter() calls — not needed here.
+    # Override to avoid ConversationEngine on_enter hooks
     def set_state(self, new_state):
         self.state = new_state
 
@@ -77,7 +84,7 @@ def test_executing_runs_tool_generates_narration_and_transitions():
     output = state.respond(engine, "Please run this tool")
 
     # 1. Model narration must appear
-    assert output == "MODEL_NARRATION"
+    assert output == "Executing: MODEL_NARRATION"
 
     # 2. tool_output is stored
     assert engine.preferences["tool_output"] == "RESULT:search_web:{'query': 'merlot'}"
@@ -98,14 +105,13 @@ def test_executing_no_tool_selected_gracefully_skips_execution():
     """
     engine = DummyEngine()
 
-    # No tool_name set → skip execution
     state = ExecutingState()
     out = state.respond(engine, "Nothing to execute")
 
     # Returned model narration
-    assert out == "MODEL_NARRATION"
+    assert out == "Executing: MODEL_NARRATION"
 
-    # No tool_output expected
+    # tool_output should exist but be None (post-refactor behaviour)
     assert engine.preferences.get("tool_output") is None
 
     # Model still narrates; transition still occurs

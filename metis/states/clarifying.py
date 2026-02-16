@@ -1,4 +1,4 @@
-# states/clarifying.py
+# metis/states/clarifying.py
 
 import logging
 from metis.states.base_state import ConversationState
@@ -69,43 +69,45 @@ class ClarifyingState(ConversationState):
                 exc,
             )
 
-        # Convert model response to text for inspection
         text_response = str(model_response) if model_response else ""
 
         # -------------------------------------------------------------
         # 3. Attempt to extract tool name + arguments
         # -------------------------------------------------------------
-        # Pattern A: Model might return explicit structured JSON
-        # Example:
-        #   {"tool_call": {"name": "search_web", "arguments": {"query": "red wine"}}}
         tool_name = None
         tool_args = {}
 
+        # Pattern A: Structured tool call
         if isinstance(model_response, dict) and "tool_call" in model_response:
             tc = model_response["tool_call"]
             tool_name = tc.get("name")
             tool_args = tc.get("arguments", {})
 
-        # Pattern B: Model returns text hinting at tool usage
-        # Example: "Use search_web to find: red wine"
-        # Simple heuristic — enhance later if needed
+        # Pattern B: Heuristic scan against known tools (defensive)
         if not tool_name:
+            handler = getattr(engine, "request_handler", None)
+            tools = []
+
+            if handler and hasattr(handler, "config"):
+                tools = handler.config.get("tools", [])
+
             lower = text_response.lower()
-            for name in engine.request_handler.config.get("tools", []):
+            for name in tools:
                 if name in lower:
                     tool_name = name
-                    # naive arg extraction, can be improved
                     tool_args = {"input": user_input}
                     break
 
-        # Pattern C: DSL pre-populated tool info in engine.preferences (no-op)
+        # Pattern C: DSL pre-populated tool info (no-op here)
 
         # -------------------------------------------------------------
         # 4. Save tool decision into engine.preferences
         # -------------------------------------------------------------
         if tool_name:
             logger.info(
-                f"[ClarifyingState] Selected tool '{tool_name}' with args={tool_args}"
+                "[ClarifyingState] Selected tool '%s' with args=%s",
+                tool_name,
+                tool_args,
             )
             engine.preferences["tool_name"] = tool_name
             engine.preferences["tool_args"] = tool_args
@@ -116,6 +118,6 @@ class ClarifyingState(ConversationState):
         engine.set_state(ExecutingState())
 
         # -------------------------------------------------------------
-        # 6. Return model response or fallback to rendered prompt
+        # 6. Return model response or fallback
         # -------------------------------------------------------------
         return model_response if model_response is not None else rendered_prompt

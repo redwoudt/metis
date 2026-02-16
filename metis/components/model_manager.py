@@ -1,23 +1,46 @@
+from __future__ import annotations
 """
-ModelManager acts as the Bridge implementor, routing text generation requests to a unified ModelClient adapter.
+ModelManager acts as the Bridge implementor, routing text generation requests to a unified model interface.
 
-How it works:
-- Delegates model selection and invocation to the provided ModelClient adapter.
-- Simplifies integration by unifying diverse model APIs behind a common interface.
-- Supports flexible backend switching without changing client code.
+Contract (test-aligned and stable):
+- generate(...) -> str
+- respond(...)  -> str (thin alias)
 
-Expansion Ideas:
-- Extend ModelClient adapters to support new models and APIs.
-- Add middleware for logging, caching, or rate limiting.
-- Enhance error handling and retries within adapters.
-- Support asynchronous generation and streaming responses.
+Adapters and proxies may return richer payloads internally, but ModelManager
+is the *single normalization point* that always returns plain text.
 """
 
+from typing import Any
+
+from metis.models.adapters.base import RespondingModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ModelManager:
-    def __init__(self, model_client):
-        self.model_client = model_client
+    def __init__(self, model_client: RespondingModel):
+        self.model_client: RespondingModel = model_client
+        logger.debug("[ModelManager] model_client=%s", type(self.model_client).__name__)
 
-    def generate(self, prompt: str) -> str:
-        response = self.model_client.generate(prompt)
-        return response.get("text", "")
+    def generate(self, prompt: str, **kwargs: Any) -> str:
+        """Generate text from the active model.
+
+        This method intentionally returns a plain string to preserve
+        backwards compatibility with tests and existing call sites.
+        """
+        # Preferred path: adapters / proxies exposing `generate()`
+        if hasattr(self.model_client, "generate") and callable(getattr(self.model_client, "generate")):
+            out = getattr(self.model_client, "generate")(prompt, **kwargs)
+
+            if isinstance(out, dict):
+                return str(out.get("text", ""))
+            if isinstance(out, str):
+                return out
+            return ""
+
+        # Fallback: minimal responding interface
+        return self.model_client.respond(prompt, **kwargs)
+
+    def respond(self, prompt: str, **kwargs: Any) -> str:
+        """Alias for generate(); exposed for conversational flow."""
+        return self.generate(prompt, **kwargs)

@@ -4,6 +4,9 @@ Integration tests for RequestHandler under the updated architecture:
 - Ensures responses are returned and engine state is created
 - Verifies snapshot (save/undo) functionality still works
 - Confirms state transitions operate correctly with the DSL + state machine
+
+Note: These tests should NOT reach into deprecated internals like `engine.request_handler`.
+They assert against the public engine surface (history/state/model_manager/etc.).
 """
 
 from metis.handler.request_handler import RequestHandler
@@ -53,8 +56,11 @@ def test_request_handler_snapshot_save_and_restore(monkeypatch):
     response_2 = handler.handle_prompt(user_id=user_id, user_input="Undo that", undo=True)
     assert isinstance(response_2, str)
 
-    # ClarifyingState may be selected depending on strategy → assert on keyword only
+    # Keyword-only: different strategies may return different phrasing.
     assert "clarify" in response_2.lower() or "undo" in response_2.lower()
+
+    # Confirm we did not rely on deprecated internals.
+    assert not hasattr(engine, "request_handler")
 
 
 def test_request_handler_state_transitions(monkeypatch):
@@ -85,3 +91,6 @@ def test_request_handler_state_transitions(monkeypatch):
 
     assert hasattr(engine, "state")
     assert hasattr(engine, "model_manager")
+
+    # Confirm we did not rely on deprecated internals.
+    assert not hasattr(engine, "request_handler")

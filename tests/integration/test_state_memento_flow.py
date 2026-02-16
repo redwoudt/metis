@@ -7,7 +7,13 @@ from metis.memory.manager import MemoryManager
 
 
 def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
-    """Helper to build an engine wired through the Bridge (ModelManager)."""
+    """
+    Helper to build an engine wired through the Bridge (ModelManager).
+
+    NOTE:
+    This test intentionally exercises ConversationEngine directly (not via RequestHandler)
+    because we're validating snapshot/restore behavior at the engine + memory layer.
+    """
     client = ModelFactory.for_role(
         "analysis",
         {"vendor": vendor, "model": model, "policies": {}},
@@ -15,9 +21,10 @@ def _engine(vendor: str = "mock", model: str = "stub") -> ConversationEngine:
     return ConversationEngine(model_manager=ModelManager(client))
 
 
-def test_state_memento_integration_flow():
+def test_state_memento_integration_flow(tmp_path):
+    # Use an isolated snapshot store so tests don't collide via the default snapshots.pkl
+    memory = MemoryManager(file_path=str(tmp_path / "snapshots.pkl"))
     engine = _engine()
-    memory = MemoryManager()
 
     # Initial greeting
     assert engine.state.__class__.__name__ == "GreetingState"
@@ -28,10 +35,10 @@ def test_state_memento_integration_flow():
     memory.save(snapshot)
 
     # Advance through states
-    engine.respond("Hello")   # ClarifyingState
-    engine.respond("Yes")     # ExecutingState
-    engine.respond("Done")    # SummarizingState
-    engine.respond("Thanks")  # ✅ triggers return to GreetingState
+    engine.respond("Hello")   # -> ClarifyingState
+    engine.respond("Yes")     # -> ExecutingState
+    engine.respond("Done")    # -> SummarizingState
+    engine.respond("Thanks")  # -> back to GreetingState
 
     assert engine.state.__class__.__name__ == "GreetingState"
     assert len(engine.history) == 5  # 1 manual, 4 from state responses

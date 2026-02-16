@@ -2,7 +2,7 @@ from typing import Any
 from .base import ToolCommand, ToolContext
 
 
-class ExecuteSqlCommand(ToolCommand):
+class ExecuteSQLCommand(ToolCommand):
     name = "execute_sql"
 
     def execute(self, context: ToolContext) -> Any:

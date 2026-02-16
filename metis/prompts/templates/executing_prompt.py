@@ -1,29 +1,39 @@
 # metis/prompts/templates/executing_prompt.py
 
-from metis.prompts.templates.base_prompt_template import BasePromptTemplate
-
 import logging
+from metis.prompts.templates.base_prompt_template import BasePromptTemplate
 
 logger = logging.getLogger(__name__)
 
 
 class ExecutingPrompt(BasePromptTemplate):
     """
-    Prompt template for executing a user-defined task.
-    Assembles a detailed instruction prompt using user input, context, and tool output.
+    Prompt template used by ExecutingState to narrate tool execution results.
+    Builds a prompt including user input, context, and tool output.
     """
 
-    def __init__(self, context="", tool_output="", tone="", persona=""):
-        super().__init__(context, tool_output, tone, persona)
-        logger.debug("[ExecutingPrompt] Initialized with context='%s', tool_output='%s', tone='%s', persona='%s'", context, tool_output, tone, persona)
+    def __init__(self, tone="", persona="", context="", tool_output=""):
+        # IMPORTANT: use named arguments to avoid ordering bugs
+        super().__init__(
+            tone=tone,
+            persona=persona,
+            context=context,
+            tool_output=tool_output,
+        )
+        logger.debug(
+            "[ExecutingPrompt] Initialized with tone='%s', persona='%s', context='%s', tool_output='%s'",
+            tone,
+            persona,
+            context,
+            tool_output,
+        )
 
     def add_task_instruction(self):
-        self.prompt.task = "Execute the user-defined task using available tools or information."
+        self.prompt.task = (
+            "Explain what was executed and summarize the result clearly and briefly. "
+            "If no tool was executed, state that and ask what to do next."
+        )
         logger.debug("[ExecutingPrompt] Task set to: %s", self.prompt.task)
-
-    def set_tone(self):
-        self.prompt.tone = self.tone
-        logger.debug("[ExecutingPrompt] Tone set to: %s", self.tone)
 
     def inject_context(self):
         logger.debug("[ExecutingPrompt] Injecting context")

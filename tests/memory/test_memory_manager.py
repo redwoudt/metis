@@ -6,7 +6,8 @@ Unit tests for MemoryManager under the Adapter + Bridge architecture.
 These tests ensure that:
 - MemoryManager can save and restore ConversationSnapshot objects.
 - Restoring a snapshot reinstates engine state, preferences, and model_manager.
-- When no snapshots exist, restore_last() returns None.
+- When no snapshots exist, restore_last() returns an empty snapshot
+  (not None) to support consistent restore flows.
 """
 
 from metis.memory.manager import MemoryManager
@@ -57,7 +58,12 @@ def test_save_and_restore_snapshot_with_engine():
     assert "[mock:stub]" in response.lower()
 
 
-def test_restore_empty_returns_none():
-    """Restoring with no snapshots should return None (no crash)."""
+def test_restore_empty_returns_empty_snapshot():
+    """
+    Restoring with no snapshots should not crash and should return
+    an empty ConversationSnapshot rather than None.
+    """
     memory = MemoryManager()
-    assert memory.restore_last() is None
+    restored = memory.restore_last()
+
+    assert isinstance(restored, ConversationSnapshot)

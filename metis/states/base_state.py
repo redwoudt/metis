@@ -1,6 +1,10 @@
 # states/base_state.py
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Any
+
 
 class ConversationState(ABC):
     """
@@ -16,7 +20,7 @@ class ConversationState(ABC):
     """
 
     @abstractmethod
-    def respond(self, engine, user_input):
+    def respond(self, engine, user_input: str) -> str:
         """
         Handle user input and return a response.
         May trigger state transitions via engine.set_state().
@@ -25,4 +29,21 @@ class ConversationState(ABC):
         :param user_input: The latest user input string.
         :return: A response string from the assistant.
         """
-        pass
+        raise NotImplementedError
+
+    def replace(self, *args: Any, **changes: Any) -> "ConversationState":
+        """
+        Backward-compatible "replace" helper.
+
+        Some older code/tests call:
+            state.replace(old_state, new_state)
+        while newer code calls:
+            state.replace(foo="bar")
+
+        Base states are typically stateless, so the default behavior is:
+        - ignore positional args entirely
+        - return self (or apply keyword changes if a subclass overrides)
+        """
+        _ = args  # intentionally ignored for backward compatibility
+        _ = changes  # base class is immutable/stateless by default
+        return self

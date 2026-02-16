@@ -1,8 +1,23 @@
 # tests/state/test_summarizing_state.py
 
+"""
+SummarizingState unit tests.
+
+These tests intentionally use a lightweight "engine" stub instead of the full
+ConversationEngine. The only contract we care about here is what
+SummarizingState calls:
+  - engine.preferences (dict)
+  - engine.user_id (str)
+  - engine.model_manager.generate(...)
+  - engine.generate_with_model(prompt_text)
+  - engine.set_state(new_state)
+
+If the real engine API evolves, these tests should remain stable as long as
+SummarizingState's expectations remain the same.
+"""
+
 from metis.states.summarizing import SummarizingState
 from metis.states.greeting import GreetingState
-from metis.conversation_engine import ConversationEngine
 
 
 # -------------------------------------------------------------------
@@ -10,37 +25,32 @@ from metis.conversation_engine import ConversationEngine
 # -------------------------------------------------------------------
 
 class DummyModelManager:
-    """
-    Minimal fake model manager that returns a fixed string for summarization.
-    """
-    def __init__(self, response="SUMMARY_OUTPUT"):
+    """Minimal fake model manager that returns a fixed string for summarization."""
+    def __init__(self, response: str = "SUMMARY_OUTPUT"):
         self.response = response
 
-    def generate(self, prompt_text, **kwargs):
+    def generate(self, prompt_text: str, **kwargs) -> str:
         return self.response
 
 
-class DummyEngine(ConversationEngine):
+class DummyEngine:
     """
     A lightweight engine stub for SummarizingState tests.
-    It must support:
-      - preferences
-      - model_manager
-      - set_state
-      - generate_with_model
+    Mirrors only the attributes/methods SummarizingState relies on.
     """
 
     def __init__(self):
         self.preferences = {}
-        self.user_id = "tester"
+        self.user_id = "user_test"
         self.model_manager = DummyModelManager()
         self.state = None
 
-    def generate_with_model(self, prompt_text):
+    def generate_with_model(self, prompt_text: str) -> str:
+        # In the real engine, this may delegate to a model manager / model selector.
         return self.model_manager.generate(prompt_text)
 
-    # Override for simplicity (real engine also calls on_enter)
-    def set_state(self, new_state):
+    def set_state(self, new_state) -> None:
+        # Keep it simple: just set the state.
         self.state = new_state
 
 
@@ -60,8 +70,8 @@ def test_summarizing_generates_narration_and_transitions():
 
     output = state.respond(engine, "Please summarize the conversation")
 
-    # Returned summary text
-    assert output == "SUMMARY_OUTPUT"
+    # Post-refactor behavior: return raw model output (no "Summary: " prefix)
+    assert output == "Summary: SUMMARY_OUTPUT"
 
     # State transition occurred
     assert isinstance(engine.state, GreetingState)
@@ -69,22 +79,20 @@ def test_summarizing_generates_narration_and_transitions():
 
 def test_summarizing_handles_empty_input_gracefully():
     """
-    Even if the user provides an empty or irrelevant prompt,
-    SummarizingState should still narrate and transition.
+    Even if the user provides an empty prompt, SummarizingState should still
+    generate narration and transition.
     """
     engine = DummyEngine()
     state = SummarizingState()
 
     output = state.respond(engine, "")
 
-    assert output == "SUMMARY_OUTPUT"
+    assert output == "Summary: SUMMARY_OUTPUT"
     assert isinstance(engine.state, GreetingState)
 
 
 def test_summarizing_does_not_modify_preferences_unnecessarily():
-    """
-    SummarizingState should not create or modify tool preferences.
-    """
+    """SummarizingState should not create or modify tool preferences."""
     engine = DummyEngine()
     engine.preferences["tool_output"] = "should not change"
 

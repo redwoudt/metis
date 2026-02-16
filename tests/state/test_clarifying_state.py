@@ -20,37 +20,45 @@ class DummyModelManager:
         return self.response
 
 
+class DummyRequestHandler:
+    """
+    RequestHandler stub.
+
+    ClarifyingState now inspects:
+        engine.request_handler.config.get("tools", [])
+
+    so we must provide a minimal config dict.
+    """
+    config = {
+        "tools": []  # no tools available unless explicitly returned by the model
+    }
+
+    def execute_tool(self, tool_name, args, user, services):
+        return "NOT_EXECUTED"
+
+
 class DummyEngine(ConversationEngine):
     """
     ConversationEngine stub that exposes:
     - preferences
     - fake model_manager
-    - fake request_handler
+    - fake request_handler (with config)
     """
     def __init__(self, model_response):
-        # A full ConversationEngine normally requires a ModelManager
+        # A full ConversationEngine normally requires a ModelManager,
         # so we set the internal model manager manually.
         self.model_manager = DummyModelManager(model_response)
         self.preferences = {}
-        self.user_id = "u_test"
+        self.user_id = "user_test"
         self.request_handler = DummyRequestHandler()
         self.state = ClarifyingState()
 
     def generate_with_model(self, prompt_text):
         return self.model_manager.generate(prompt_text)
 
-    # override state setter because real ConversationEngine tries to call on_enter()
+    # Override state setter because real ConversationEngine may call on_enter()
     def set_state(self, new_state):
         self.state = new_state
-
-
-class DummyRequestHandler:
-    """
-    RequestHandler stub — ClarifyingState does not execute tools,
-    but it must reference handler in ExecutingState, so we stub one.
-    """
-    def execute_tool(self, tool_name, args, user, services):
-        return "NOT_EXECUTED"
 
 
 # -------------------------------------------------------------------
@@ -92,7 +100,8 @@ def test_clarifying_extracts_tool_call():
 
 def test_clarifying_does_not_fail_without_tool_call():
     """
-    If the model returns plain text, ClarifyingState should NOT crash or require tools.
+    If the model returns plain text, ClarifyingState should NOT crash
+    or attempt to infer tools from configuration.
     """
     engine = DummyEngine(model_response="No tool call here.")
 
