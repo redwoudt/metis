@@ -3,6 +3,20 @@ from typing import Any, Dict
 import json
 
 
+def _parse_bool(value: str) -> bool:
+    """Parse common DSL boolean values.
+
+    Supports: true/false, yes/no, on/off, 1/0 (case-insensitive).
+    Any unrecognized value defaults to False.
+    """
+    v = (value or "").strip().lower()
+    if v in {"true", "yes", "y", "on", "1"}:
+        return True
+    if v in {"false", "no", "n", "off", "0"}:
+        return False
+    return False
+
+
 class Expression:
     def interpret(self, context: Dict[str, Any]) -> None:
         raise NotImplementedError()
@@ -48,6 +62,46 @@ class SourceExpr(Expression):
     value: str
     def interpret(self, context: Dict[str, Any]) -> None:
         context["source"] = self.value
+
+
+@dataclass
+class StyleExpr(Expression):
+    value: str
+
+    def interpret(self, context: Dict[str, Any]) -> None:
+        # Stores the requested response style in the shared DSL context.
+        # Example usage in DSL:
+        #   [style: detailed]
+        # The actual selection logic is handled elsewhere.
+        context["style"] = self.value
+
+
+@dataclass
+class SafetyEnabledExpr(Expression):
+    value: str
+
+    def interpret(self, context: Dict[str, Any]) -> None:
+        # Enables or disables optional safety post-processing.
+        # Accepts common truthy/falsey strings to keep the DSL ergonomic.
+        context["safety_enabled"] = _parse_bool(self.value)
+
+
+@dataclass
+class FormatMarkdownExpr(Expression):
+    value: str
+
+    def interpret(self, context: Dict[str, Any]) -> None:
+        # When enabled, the response renderer may wrap output in Markdown.
+        context["format_markdown"] = _parse_bool(self.value)
+
+
+@dataclass
+class IncludeCitationsExpr(Expression):
+    value: str
+
+    def interpret(self, context: Dict[str, Any]) -> None:
+        # When enabled, the response renderer may append a citation footer.
+        context["include_citations"] = _parse_bool(self.value)
 
 
 # ----------------------------

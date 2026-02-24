@@ -198,6 +198,30 @@ class RequestHandler:
                 engine.set_state(initial_state)
                 engine._explicit_state = True
 
+        # ---------------- Response generation strategy ----------------
+        # If the user requested a response style via DSL (e.g. [style: detailed]),
+        # select the matching generation strategy and attach it to the engine.
+        #
+        # This keeps state code unchanged: states call engine.generate_with_model(...)
+        # and the engine delegates to the configured strategy.
+        try:
+            from metis.response.generation.selector import StrategySelector
+
+            selector = StrategySelector()
+            engine.response_strategy = selector.select(dsl_ctx, self.config)
+        except Exception:
+            # Keep request handling functional if the response package isn't present
+            # or during partial refactors.
+            pass
+        # ---------------- Response rendering preferences ----------------
+        # Copy optional rendering flags from the DSL context into engine preferences.
+        # These are used by the response post-processing pipeline.
+        if "safety_enabled" in dsl_ctx:
+            engine.preferences["safety_enabled"] = bool(dsl_ctx["safety_enabled"])
+        if "format_markdown" in dsl_ctx:
+            engine.preferences["format_markdown"] = bool(dsl_ctx["format_markdown"])
+        if "include_citations" in dsl_ctx:
+            engine.preferences["include_citations"] = bool(dsl_ctx["include_citations"])
         # Inject tool executor
         engine.execute_tool = self.execute_tool
         engine.preferences.update(session.tool_preferences)

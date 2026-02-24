@@ -45,9 +45,15 @@ class DummyEngine:
         self.model_manager = DummyModelManager()
         self.state = None
 
-    def generate_with_model(self, prompt_text: str) -> str:
-        # In the real engine, this may delegate to a model manager / model selector.
-        return self.model_manager.generate(prompt_text)
+    def generate_with_model(self, prompt_text: str, **kwargs) -> str:
+        """Generate text using the model manager.
+
+        The real ConversationEngine.generate_with_model(...) accepts optional
+        generation kwargs (e.g., max_tokens, temperature). This stub mirrors
+        that signature so state tests remain compatible when the engine API
+        evolves.
+        """
+        return self.model_manager.generate(prompt_text, **kwargs)
 
     def set_state(self, new_state) -> None:
         # Keep it simple: just set the state.

@@ -162,9 +162,19 @@ class ModelProxy(ModelClient):
             self._record_usage(latency_ms=0)
             return self.cache[cache_key]  # exact same object
 
-        # call backend
+        # Call backend.
+        #
+        # Not all adapters accept arbitrary **kwargs. To keep the proxy resilient,
+        # we attempt a kwargs call first, then retry without kwargs if the backend
+        # signature is strict.
         start = time.time()
-        raw = self.backend.generate(prompt, **kwargs) if self.backend else ""
+        raw = ""
+        if self.backend:
+            try:
+                raw = self.backend.generate(prompt, **kwargs)
+            except TypeError:
+                # Fallback for strict signatures: def generate(self, prompt: str) -> str
+                raw = self.backend.generate(prompt)
         end = time.time()
         latency_ms = int((end - start) * 1000)
         self.last_call_ts = end
