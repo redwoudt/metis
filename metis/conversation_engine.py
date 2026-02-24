@@ -61,6 +61,34 @@ class ConversationEngine:
         self.model_manager = model_manager
 
         # ------------------------------------------------------------------
+        # Response generation and rendering extensions
+        #
+        # - response_strategy controls how the model is invoked
+        #   (e.g., generation parameters like max_tokens or temperature).
+        # - response_composer optionally post-processes the final string
+        #   (e.g., formatting, citations, safety filtering).
+        #
+        # Both are optional and default to safe behaviour so existing
+        # state logic remains unchanged.
+        # ------------------------------------------------------------------
+
+        # Strategy: controls model invocation behaviour.
+        self.response_strategy = None
+        try:
+            from metis.response.generation.strategies import DefaultStrategy
+            self.response_strategy = DefaultStrategy()
+        except Exception:
+            self.response_strategy = None
+
+        # Composer: controls optional response post-processing.
+        self.response_composer = None
+        try:
+            from metis.response.rendering.composer import ResponseComposer
+            self.response_composer = ResponseComposer()
+        except Exception:
+            self.response_composer = None
+
+        # ------------------------------------------------------------------
         # Tool executor (required by pipeline tests)
         # ------------------------------------------------------------------
         self.tool_executor = None
@@ -422,6 +450,17 @@ class ConversationEngine:
         if not isinstance(response, str):
             response = str(response)
 
+
+        # Optional post-processing phase
+        try:
+            if self.response_composer is not None:
+                response = self.response_composer.compose(
+                    raw=response,
+                    preferences=self.preferences or {},
+                ).render()
+        except Exception:
+            logger.exception("[ConversationEngine] Response decoration failed")
+
         # Record interaction for snapshot / undo support (one entry per turn)
         if hasattr(self, "history"):
             self.history.append(response)
@@ -438,7 +477,7 @@ class ConversationEngine:
 
         return response
 
-    def generate_with_model(self, prompt: str) -> str:
+    def generate_with_model(self, prompt: str, **gen_kwargs: Any) -> str:
         # Normalize prompt: always render Prompt objects before sending to model
         if isinstance(prompt, Prompt):
             prompt = prompt.render()
@@ -451,7 +490,14 @@ class ConversationEngine:
         )
 
         try:
-            generated = self.model_manager.generate(prompt)
+            if self.response_strategy is not None:
+                generated = self.response_strategy.generate(
+                    self.model_manager,
+                    prompt,
+                    **gen_kwargs,
+                )
+            else:
+                generated = self.model_manager.generate(prompt, **gen_kwargs)
         except Exception as e:
             logger.error("[ConversationEngine] ModelManager.generate failed: %s", e)
             generated = ""

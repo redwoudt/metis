@@ -9,6 +9,10 @@ from .ast import (
     FormatExpr,
     ToneExpr,
     SourceExpr,
+    StyleExpr,
+    SafetyEnabledExpr,
+    FormatMarkdownExpr,
+    IncludeCitationsExpr,
     ToolExpr,
     ArgsExpr,
     ToolCallExpr,
@@ -22,6 +26,14 @@ KEY_TO_EXPR = {
     "format": FormatExpr,
     "tone": ToneExpr,
     "source": SourceExpr,
+
+    # Response style selection
+    "style": StyleExpr,
+
+    # Response rendering preferences
+    "safety_enabled": SafetyEnabledExpr,
+    "format_markdown": FormatMarkdownExpr,
+    "include_citations": IncludeCitationsExpr,
 
     # Tool execution (Chapter 8)
     "tool": ToolExpr,

@@ -29,6 +29,14 @@ KNOWN_KEYS: Set[str] = {
     "tone",
     "source",
 
+    # Response style selection
+    "style",
+
+    # Response rendering preferences
+    "safety_enabled",
+    "format_markdown",
+    "include_citations",
+
     # Tool execution (Chapter 8)
     "tool",
     "args",

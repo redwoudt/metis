@@ -54,8 +54,15 @@ class DummyEngine:
         self.tool_executor = DummyToolExecutor()
         self.state = None
 
-    def generate_with_model(self, prompt_text: str) -> str:
-        return self.model_manager.generate(prompt_text)
+    def generate_with_model(self, prompt_text: str, **kwargs) -> str:
+        """Generate text using the model manager.
+
+        The real ConversationEngine.generate_with_model(...) accepts optional
+        generation kwargs (e.g., max_tokens, temperature). This stub mirrors
+        that signature so state tests remain compatible when the engine API
+        evolves.
+        """
+        return self.model_manager.generate(prompt_text, **kwargs)
 
     def execute_tool(self, tool_name: str, args: dict, user):
         return self.tool_executor.execute_tool(tool_name, args, user)

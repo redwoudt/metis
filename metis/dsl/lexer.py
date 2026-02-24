@@ -72,3 +72,23 @@ def lex(text: str) -> List[Token]:
 
     tokens.append(Token(TokenType.EOF, "", line, col))
     return tokens
+
+
+class Lexer:
+    """Backwards-compatible wrapper for the DSL lexer.
+
+    Older code (and tests) expects a `Lexer` class that can be instantiated and then
+    asked for tokens. The implementation in this module is function-based (`lex`).
+    This wrapper preserves the original import surface: `from metis.dsl.lexer import Lexer`.
+    """
+
+    def __init__(self, text: str):
+        self.text = text
+
+    def lex(self) -> List[Token]:
+        """Lex the configured input text into a list of tokens."""
+        return lex(self.text)
+
+    def tokenize(self) -> List[Token]:
+        """Alias for `lex()` for compatibility with callers that expect `tokenize()`."""
+        return self.lex()
