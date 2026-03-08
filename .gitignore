@@ -182,3 +182,7 @@ cython_debug/
 sessions.pkl
 snapshots.pkl.metis_sessions/
 snapshots.pkl
+
+# Mêtis scheduler database and runtime state
+.metis/
+.metis/*.db

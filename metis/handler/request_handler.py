@@ -59,24 +59,45 @@ class RequestHandler:
     # Tool execution entry point (Command + CoR)
     # ------------------------------------------------------------------
     def execute_tool(self, tool_name, args=None, user=None, services=None):
+        """
+        Resolve and execute a tool command through the handler pipeline.
+
+        Shared services are injected into the ToolContext so that commands can
+        access infrastructure such as scheduling, quota checks, logging, and
+        other cross-cutting system services without depending on global state.
+        """
         if tool_name not in command_registry:
             raise ToolExecutionError(f"Unknown tool '{tool_name}'")
 
+        # Instantiate the requested command from the registry.
         command = command_registry[tool_name]()
 
+        # Use the shared services container unless an override is supplied.
+        # Tests can pass a custom services object here to keep execution isolated.
+        services = services or Config.services()
+
+        # Copy args defensively so downstream code can enrich them safely.
         safe_args = dict(args or {})
+
+        # Support both calling styles:
+        # - user passed explicitly to execute_tool(...)
+        # - user already embedded in args
         if user is None:
             user = safe_args.get("user")
         if user is not None and "user" not in safe_args:
             safe_args["user"] = user
 
+        # Build the shared execution context consumed by handlers and commands.
         context = ToolContext(
             command=command,
             args=safe_args,
             user=user,
             metadata={"allow_user_tools": True},
+            services=services,
         )
 
+        # Commands that affect external systems or persist work should flow
+        # through the stricter pipeline so quota checks and audit logging still apply.
         if tool_name in {"execute_sql", "schedule_task"} and services is not None:
             pipeline = build_strict_pipeline(
                 services.quota,
