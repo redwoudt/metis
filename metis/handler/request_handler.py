@@ -1,6 +1,7 @@
 import re
 import logging
 import json
+from uuid import uuid4
 
 from metis.components.session_manager import SessionManager
 from metis.prompts.builders.prompt_builder import PromptBuilder
@@ -11,6 +12,7 @@ from metis.memory.manager import MemoryManager
 from metis.exceptions import ToolExecutionError
 from metis.dsl import interpret_prompt_dsl
 from metis.config import Config
+from metis.events import Event
 
 from metis.models.model_factory import ModelFactory
 from metis.components.model_manager import ModelManager
@@ -114,180 +116,229 @@ class RequestHandler:
     def handle_prompt(self, user_id, user_input, save=False, undo=False):
         logger.info("[handle_prompt] user_id='%s' input='%s'", user_id, user_input)
 
-        self.policy.enforce(user_id, user_input)
-        if self.auth_policy:
-            self.auth_policy.enforce(user_id, user_input)
+        services = Config.services()
+        event_bus = getattr(services, "event_bus", None)
+        correlation_id = str(uuid4())
 
-        session = self.session_manager.load_or_create(user_id)
+        if event_bus is not None:
+            event_bus.publish(
+                Event.create(
+                    event_type="prompt.received",
+                    source="RequestHandler",
+                    correlation_id=correlation_id,
+                    payload={"user_input": user_input},
+                    metadata={"user_id": user_id},
+                )
+            )
 
-        # Be defensive: older snapshots may not have these attributes.
-        if not hasattr(session, "tool_preferences") or session.tool_preferences is None:
-            session.tool_preferences = {}
-        if not hasattr(session, "persona"):
-            session.persona = ""
-        if not hasattr(session, "tone"):
-            session.tone = ""
-        if not hasattr(session, "context"):
-            session.context = ""
-        if not hasattr(session, "state"):
-            session.state = None
+        try:
+            self.policy.enforce(user_id, user_input)
+            if self.auth_policy:
+                self.auth_policy.enforce(user_id, user_input)
 
-        engine = getattr(session, "engine", None)
+            session = self.session_manager.load_or_create(user_id)
 
-        if engine is not None and not hasattr(engine, "preferences"):
-            engine.preferences = {}
-            # ---------------- Tool DSL (pre-parse) ----------------
+            # Be defensive: older snapshots may not have these attributes.
+            if not hasattr(session, "tool_preferences") or session.tool_preferences is None:
+                session.tool_preferences = {}
+            if not hasattr(session, "persona"):
+                session.persona = ""
+            if not hasattr(session, "tone"):
+                session.tone = ""
+            if not hasattr(session, "context"):
+                session.context = ""
+            if not hasattr(session, "state"):
+                session.state = None
+
+            engine = getattr(session, "engine", None)
+
+            if engine is not None and not hasattr(engine, "preferences"):
+                engine.preferences = {}
+                # ---------------- Tool DSL (pre-parse) ----------------
+                tool_name = None
+                tool_args = {}
+
+                tool_match = re.search(r"\[tool:\s*([^\]]+)\]", user_input or "")
+                args_match = re.search(r"\[args:\s*(\{.*?\})\]", user_input or "")
+
+                if tool_match:
+                    tool_name = tool_match.group(1).strip()
+
+                    if args_match:
+                        try:
+                            tool_args = json.loads(args_match.group(1))
+                        except Exception:
+                            tool_args = {}
+
+            # ---------------- DSL ----------------
+            dsl_ctx = {}
+            try:
+                blocks = re.findall(r"\[[^\[\]:]+:[^\[\]]+?\]", user_input or "")
+                if blocks:
+                    dsl_ctx = interpret_prompt_dsl("".join(blocks))
+                    user_input = re.sub(
+                        r"\[[^\[\]:]+:[^\[\]]+?\]",
+                        "",
+                        user_input or "",
+                    ).strip()
+
+                    if dsl_ctx.get("persona"):
+                        session.persona = dsl_ctx["persona"]
+                    if dsl_ctx.get("tone"):
+                        session.tone = dsl_ctx["tone"]
+            except Exception:
+                logger.exception("[RequestHandler] DSL parse error")
+
+            # ---------------- Tool selection ----------------
             tool_name = None
             tool_args = {}
 
-            tool_match = re.search(r"\[tool:\s*([^\]]+)\]", user_input or "")
-            args_match = re.search(r"\[args:\s*(\{.*?\})\]", user_input or "")
+            if "tool" in dsl_ctx:
+                tool_name = dsl_ctx["tool"]
+                tool_args = dsl_ctx.get("args", {}) or {}
 
-            if tool_match:
-                tool_name = tool_match.group(1).strip()
+            if "tool_call" in dsl_ctx:
+                tc = dsl_ctx["tool_call"] or {}
+                tool_name = tc.get("name")
+                tool_args = tc.get("arguments", {}) or {}
 
-                if args_match:
-                    try:
-                        tool_args = json.loads(args_match.group(1))
-                    except Exception:
-                        tool_args = {}
+            if tool_name:
+                session.tool_preferences["tool_name"] = tool_name
+                session.tool_preferences["tool_args"] = tool_args
 
-        # ---------------- DSL ----------------
-        dsl_ctx = {}
-        try:
-            blocks = re.findall(r"\[[^\[\]:]+:[^\[\]]+?\]", user_input or "")
-            if blocks:
-                dsl_ctx = interpret_prompt_dsl("".join(blocks))
-                user_input = re.sub(
-                    r"\[[^\[\]:]+:[^\[\]]+?\]",
-                    "",
-                    user_input or "",
-                ).strip()
+            # ---------------- Model + Engine ----------------
+            model_role = (
+                str(dsl_ctx.get("task")).lower()
+                if dsl_ctx.get("task")
+                else "analysis"
+            )
 
-                if dsl_ctx.get("persona"):
-                    session.persona = dsl_ctx["persona"]
-                if dsl_ctx.get("tone"):
-                    session.tone = dsl_ctx["tone"]
-        except Exception:
-            logger.exception("[RequestHandler] DSL parse error")
+            # Align initial conversation state with DSL task (if provided)
+            initial_state = None
+            if dsl_ctx.get("task"):
+                task = str(dsl_ctx.get("task")).lower()
+                if task == "summarize":
+                    from metis.states.summarizing import SummarizingState
+                    initial_state = SummarizingState()
 
-        # ---------------- Tool selection ----------------
-        tool_name = None
-        tool_args = {}
+            model_client = ModelFactory.for_role(model_role, self.config)
+            # Pass the shared EventBus into ModelManager so model lifecycle
+            # events are published through the same observer infrastructure.
+            model_manager = ModelManager(model_client, event_bus=event_bus)
 
-        if "tool" in dsl_ctx:
-            tool_name = dsl_ctx["tool"]
-            tool_args = dsl_ctx.get("args", {}) or {}
+            if engine is None:
+                engine = ConversationEngine(model_manager=model_manager)
+                engine.preferences = {}
+                if initial_state is not None:
+                    engine.set_state(initial_state)
+                    engine._explicit_state = True
+                session.engine = engine
+            else:
+                engine.set_model_manager(model_manager)
+                if initial_state is not None:
+                    engine.set_state(initial_state)
+                    engine._explicit_state = True
 
-        if "tool_call" in dsl_ctx:
-            tc = dsl_ctx["tool_call"] or {}
-            tool_name = tc.get("name")
-            tool_args = tc.get("arguments", {}) or {}
+            # Ensure downstream components can trace this request flow.
+            engine.preferences["correlation_id"] = correlation_id
 
-        if tool_name:
-            session.tool_preferences["tool_name"] = tool_name
-            session.tool_preferences["tool_args"] = tool_args
-
-        # ---------------- Model + Engine ----------------
-        model_role = (
-            str(dsl_ctx.get("task")).lower()
-            if dsl_ctx.get("task")
-            else "analysis"
-        )
-
-        # Align initial conversation state with DSL task (if provided)
-        initial_state = None
-        if dsl_ctx.get("task"):
-            task = str(dsl_ctx.get("task")).lower()
-            if task == "summarize":
-                from metis.states.summarizing import SummarizingState
-                initial_state = SummarizingState()
-
-        model_client = ModelFactory.for_role(model_role, self.config)
-        model_manager = ModelManager(model_client)
-
-        if engine is None:
-            engine = ConversationEngine(model_manager=model_manager)
-            engine.preferences = {}
-            if initial_state is not None:
-                engine.set_state(initial_state)
-                engine._explicit_state = True
-            session.engine = engine
-        else:
-            engine.set_model_manager(model_manager)
-            if initial_state is not None:
-                engine.set_state(initial_state)
-                engine._explicit_state = True
-
-        # ---------------- Response generation strategy ----------------
-        # If the user requested a response style via DSL (e.g. [style: detailed]),
-        # select the matching generation strategy and attach it to the engine.
-        #
-        # This keeps state code unchanged: states call engine.generate_with_model(...)
-        # and the engine delegates to the configured strategy.
-        try:
-            from metis.response.generation.selector import StrategySelector
-
-            selector = StrategySelector()
-            engine.response_strategy = selector.select(dsl_ctx, self.config)
-        except Exception:
-            # Keep request handling functional if the response package isn't present
-            # or during partial refactors.
-            pass
-        # ---------------- Response rendering preferences ----------------
-        # Copy optional rendering flags from the DSL context into engine preferences.
-        # These are used by the response post-processing pipeline.
-        if "safety_enabled" in dsl_ctx:
-            engine.preferences["safety_enabled"] = bool(dsl_ctx["safety_enabled"])
-        if "format_markdown" in dsl_ctx:
-            engine.preferences["format_markdown"] = bool(dsl_ctx["format_markdown"])
-        if "include_citations" in dsl_ctx:
-            engine.preferences["include_citations"] = bool(dsl_ctx["include_citations"])
-        # Inject tool executor
-        engine.execute_tool = self.execute_tool
-        engine.preferences.update(session.tool_preferences)
-
-        # ---------------- State selection (strategy + DSL) ----------------
-        # Strategy is the primary driver for state selection in tests; DSL can still
-        # seed an initial state when no strategy override is present.
-        strategy_state = None
-        if self.strategy is not None:
+            # ---------------- Response generation strategy ----------------
+            # If the user requested a response style via DSL (e.g. [style: detailed]),
+            # select the matching generation strategy and attach it to the engine.
+            #
+            # This keeps state code unchanged: states call engine.generate_with_model(...)
+            # and the engine delegates to the configured strategy.
             try:
-                strategy_state = self.strategy.determine_state_name(user_input, dsl_ctx)
+                from metis.response.generation.selector import StrategySelector
+
+                selector = StrategySelector()
+                engine.response_strategy = selector.select(dsl_ctx, self.config)
             except Exception:
-                logger.exception("[RequestHandler] Strategy state selection failed")
+                # Keep request handling functional if the response package isn't present
+                # or during partial refactors.
+                pass
+            # ---------------- Response rendering preferences ----------------
+            # Copy optional rendering flags from the DSL context into engine preferences.
+            # These are used by the response post-processing pipeline.
+            if "safety_enabled" in dsl_ctx:
+                engine.preferences["safety_enabled"] = bool(dsl_ctx["safety_enabled"])
+            if "format_markdown" in dsl_ctx:
+                engine.preferences["format_markdown"] = bool(dsl_ctx["format_markdown"])
+            if "include_citations" in dsl_ctx:
+                engine.preferences["include_citations"] = bool(dsl_ctx["include_citations"])
+            # Inject tool executor
+            engine.execute_tool = self.execute_tool
+            engine.preferences.update(session.tool_preferences)
 
-        if strategy_state:
-            # Strategy state names are typically lowercase (e.g. "greeting").
-            # Resolve to a State class and mark as explicit so the engine doesn't override it.
-            try:
-                module_name = str(strategy_state).replace("State", "").lower()
-                class_name = (
-                    str(strategy_state)
-                    if str(strategy_state).endswith("State")
-                    else f"{str(strategy_state).capitalize()}State"
+            # ---------------- State selection (strategy + DSL) ----------------
+            # Strategy is the primary driver for state selection in tests; DSL can still
+            # seed an initial state when no strategy override is present.
+            strategy_state = None
+            if self.strategy is not None:
+                try:
+                    strategy_state = self.strategy.determine_state_name(user_input, dsl_ctx)
+                except Exception:
+                    logger.exception("[RequestHandler] Strategy state selection failed")
+
+            if strategy_state:
+                # Strategy state names are typically lowercase (e.g. "greeting").
+                # Resolve to a State class and mark as explicit so the engine doesn't override it.
+                try:
+                    module_name = str(strategy_state).replace("State", "").lower()
+                    class_name = (
+                        str(strategy_state)
+                        if str(strategy_state).endswith("State")
+                        else f"{str(strategy_state).capitalize()}State"
+                    )
+                    module = __import__(f"metis.states.{module_name}", fromlist=[class_name])
+                    state_cls = getattr(module, class_name)
+                    engine.set_state(state_cls())
+                    engine._explicit_state = True
+                except Exception as exc:
+                    logger.debug(
+                        "[RequestHandler] Failed to resolve strategy state '%s': %s",
+                        strategy_state,
+                        exc,
+                    )
+
+            # ---------------- Prompt / response ----------------
+            # IMPORTANT: ConversationEngine + States expect the *raw user text*.
+            # The states/templates are responsible for building a rendered prompt.
+            response = engine.respond(user_input)
+            if response is None:
+                response = ""
+
+            if event_bus is not None:
+                event_bus.publish(
+                    Event.create(
+                        event_type="response.generated",
+                        source="RequestHandler",
+                        correlation_id=correlation_id,
+                        payload={"response_length": len(response)},
+                        metadata={"user_id": user_id},
+                    )
                 )
-                module = __import__(f"metis.states.{module_name}", fromlist=[class_name])
-                state_cls = getattr(module, class_name)
-                engine.set_state(state_cls())
-                engine._explicit_state = True
-            except Exception as exc:
-                logger.debug(
-                    "[RequestHandler] Failed to resolve strategy state '%s': %s",
-                    strategy_state,
-                    exc,
+
+            # Keep session state in sync with the engine after transitions.
+            if hasattr(engine, "state") and engine.state is not None:
+                session.state = engine.state.__class__.__name__
+
+            self.session_manager.save(user_id, session)
+            return response
+
+        except Exception as exc:
+            if event_bus is not None:
+                event_bus.publish(
+                    Event.create(
+                        event_type="response.failed",
+                        source="RequestHandler",
+                        correlation_id=correlation_id,
+                        payload={
+                            "error_type": exc.__class__.__name__,
+                            "error_message": str(exc),
+                        },
+                        metadata={"user_id": user_id},
+                        severity="ERROR",
+                    )
                 )
-
-        # ---------------- Prompt / response ----------------
-        # IMPORTANT: ConversationEngine + States expect the *raw user text*.
-        # The states/templates are responsible for building a rendered prompt.
-        response = engine.respond(user_input)
-        if response is None:
-            response = ""
-
-        # Keep session state in sync with the engine after transitions.
-        if hasattr(engine, "state") and engine.state is not None:
-            session.state = engine.state.__class__.__name__
-
-        self.session_manager.save(user_id, session)
-        return response
+            raise

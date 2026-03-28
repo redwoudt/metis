@@ -1,9 +1,11 @@
 # metis/states/executing.py
 
 import logging
+from uuid import uuid4
 from typing import Optional, Any, Callable
 
 from metis import config as metis_config
+from metis.events import Event
 from metis.states.base_state import ConversationState
 
 logger = logging.getLogger("metis.states.executing")
@@ -110,6 +112,53 @@ class ExecutingState(ConversationState):
             raise last_err
         return None
 
+    def _publish_command_event(
+        self,
+        engine,
+        event_type: str,
+        tool_name: str,
+        tool_args: dict,
+        *,
+        severity: str = "INFO",
+        extra_payload: dict | None = None,
+    ) -> None:
+        """
+        Publish a command lifecycle event if the shared EventBus is available.
+
+        ExecutingState should emit events and remain agnostic to which observers
+        consume them.
+        """
+        try:
+            services = metis_config.Config.services()
+            event_bus = getattr(services, "event_bus", None)
+        except Exception:
+            event_bus = None
+
+        if event_bus is None:
+            return
+
+        prefs = getattr(engine, "preferences", {}) or {}
+        correlation_id = prefs.get("correlation_id") or str(uuid4())
+        payload = {
+            "command_name": tool_name,
+            "tool_args": tool_args,
+        }
+        if extra_payload:
+            payload.update(extra_payload)
+
+        event_bus.publish(
+            Event.create(
+                event_type=event_type,
+                source="ExecutingState",
+                correlation_id=correlation_id,
+                payload=payload,
+                metadata={
+                    "user_id": self._resolve_user(engine),
+                },
+                severity=severity,
+            )
+        )
+
     def _execute_selected_tool(self, engine) -> Optional[str]:
         if not isinstance(getattr(engine, "preferences", None), dict):
             return None
@@ -124,6 +173,12 @@ class ExecutingState(ConversationState):
         user_val = self._resolve_user(engine)
 
         logger.info("[ExecutingState] Attempting tool execution: %s %s", tool_name, tool_args)
+        self._publish_command_event(
+            engine,
+            "command.started",
+            tool_name,
+            tool_args,
+        )
 
         # Best-effort get services (some handlers expect it)
         try:
@@ -149,39 +204,107 @@ class ExecutingState(ConversationState):
                         _ = exec_fn(tool_name=tool_name, args=tool_args, user=user_val)
                     except TypeError:
                         _ = exec_fn(tool_name, tool_args, user_val)
-                except Exception:
+                except Exception as exc:
                     logger.exception("[ExecutingState] services.tool_executor.execute_tool failed")
+                    self._publish_command_event(
+                        engine,
+                        "command.failed",
+                        tool_name,
+                        tool_args,
+                        severity="ERROR",
+                        extra_payload={
+                            "error_type": exc.__class__.__name__,
+                            "error_message": str(exc),
+                        },
+                    )
+                    raise
 
                 out = f"TOOL_OUTPUT:{tool_name}:{tool_args}"
                 engine.preferences["tool_output"] = out
                 self._record_call(engine, tool_name, tool_args, user_val)
+                self._publish_command_event(
+                    engine,
+                    "command.completed",
+                    tool_name,
+                    tool_args,
+                    extra_payload={"tool_output": out},
+                )
                 return out
 
         # 2) request_handler (tests often expect RESULT:...)
         handler = getattr(engine, "request_handler", None)
         rh_exec = getattr(handler, "execute_tool", None) if handler else None
         if callable(rh_exec):
-            out = self._call_execute_tool(
-                rh_exec,
-                services=services,
-                tool_name=tool_name,
-                tool_args=tool_args,
-                user_val=user_val,
-            )
+            try:
+                out = self._call_execute_tool(
+                    rh_exec,
+                    services=services,
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    user_val=user_val,
+                )
+            except Exception as exc:
+                self._publish_command_event(
+                    engine,
+                    "command.failed",
+                    tool_name,
+                    tool_args,
+                    severity="ERROR",
+                    extra_payload={
+                        "error_type": exc.__class__.__name__,
+                        "error_message": str(exc),
+                    },
+                )
+                raise
             engine.preferences["tool_output"] = out
+            self._publish_command_event(
+                engine,
+                "command.completed",
+                tool_name,
+                tool_args,
+                extra_payload={"tool_output": out},
+            )
             return out
 
         # 3) engine.tool_executor (direct)
         direct_exec = getattr(getattr(engine, "tool_executor", None), "execute_tool", None)
         if callable(direct_exec):
             try:
-                out = direct_exec(tool_name=tool_name, args=tool_args, user=user_val)
-            except TypeError:
-                out = direct_exec(tool_name, tool_args, user_val)
+                try:
+                    out = direct_exec(tool_name=tool_name, args=tool_args, user=user_val)
+                except TypeError:
+                    out = direct_exec(tool_name, tool_args, user_val)
+            except Exception as exc:
+                self._publish_command_event(
+                    engine,
+                    "command.failed",
+                    tool_name,
+                    tool_args,
+                    severity="ERROR",
+                    extra_payload={
+                        "error_type": exc.__class__.__name__,
+                        "error_message": str(exc),
+                    },
+                )
+                raise
             engine.preferences["tool_output"] = out
+            self._publish_command_event(
+                engine,
+                "command.completed",
+                tool_name,
+                tool_args,
+                extra_payload={"tool_output": out},
+            )
             return out
 
         # 4) Fallback
         out = f"RESULT:{tool_name}:{tool_args}"
         engine.preferences["tool_output"] = out
+        self._publish_command_event(
+            engine,
+            "command.completed",
+            tool_name,
+            tool_args,
+            extra_payload={"tool_output": out},
+        )
         return out

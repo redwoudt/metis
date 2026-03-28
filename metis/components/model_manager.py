@@ -11,15 +11,18 @@ is the *single normalization point* that always returns plain text.
 """
 
 from typing import Any
+from uuid import uuid4
 
 from metis.models.adapters.base import RespondingModel
+from metis.events import Event
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ModelManager:
-    def __init__(self, model_client: RespondingModel):
+    def __init__(self, model_client: RespondingModel, event_bus=None):
         self.model_client: RespondingModel = model_client
+        self.event_bus = event_bus
         logger.debug("[ModelManager] model_client=%s", type(self.model_client).__name__)
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -28,18 +31,74 @@ class ModelManager:
         This method intentionally returns a plain string to preserve
         backwards compatibility with tests and existing call sites.
         """
-        # Preferred path: adapters / proxies exposing `generate()`
-        if hasattr(self.model_client, "generate") and callable(getattr(self.model_client, "generate")):
-            out = getattr(self.model_client, "generate")(prompt, **kwargs)
+        # Reuse the request correlation ID when available; otherwise fall back
+        # to a generated value so standalone model calls remain traceable.
+        correlation_id = kwargs.get("correlation_id") or str(uuid4())
+        metadata = {
+            "model_client": type(self.model_client).__name__,
+        }
 
-            if isinstance(out, dict):
-                return str(out.get("text", ""))
-            if isinstance(out, str):
-                return out
-            return ""
+        if self.event_bus is not None:
+            self.event_bus.publish(
+                Event.create(
+                    event_type="model.requested",
+                    source="ModelManager",
+                    correlation_id=correlation_id,
+                    payload={
+                        "prompt_length": len(prompt or ""),
+                    },
+                    metadata=metadata,
+                )
+            )
 
-        # Fallback: minimal responding interface
-        return self.model_client.respond(prompt, **kwargs)
+        try:
+            # Preferred path: adapters / proxies exposing `generate()`
+            if hasattr(self.model_client, "generate") and callable(getattr(self.model_client, "generate")):
+                out = getattr(self.model_client, "generate")(prompt, **kwargs)
+
+                if isinstance(out, dict):
+                    result = str(out.get("text", ""))
+                elif isinstance(out, str):
+                    result = out
+                else:
+                    result = ""
+            else:
+                # Fallback: minimal responding interface
+                result = self.model_client.respond(prompt, **kwargs)
+
+            if self.event_bus is not None:
+                self.event_bus.publish(
+                    Event.create(
+                        event_type="model.responded",
+                        source="ModelManager",
+                        correlation_id=correlation_id,
+                        payload={
+                            "prompt_length": len(prompt or ""),
+                            "response_length": len(result or ""),
+                        },
+                        metadata=metadata,
+                    )
+                )
+
+            return result
+
+        except Exception as exc:
+            if self.event_bus is not None:
+                self.event_bus.publish(
+                    Event.create(
+                        event_type="model.failed",
+                        source="ModelManager",
+                        correlation_id=correlation_id,
+                        payload={
+                            "prompt_length": len(prompt or ""),
+                            "error_type": exc.__class__.__name__,
+                            "error_message": str(exc),
+                        },
+                        metadata=metadata,
+                        severity="ERROR",
+                    )
+                )
+            raise
 
     def respond(self, prompt: str, **kwargs: Any) -> str:
         """Alias for generate(); exposed for conversational flow."""
