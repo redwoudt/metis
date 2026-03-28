@@ -181,3 +181,49 @@ def test_clear_removes_all_subscriptions():
 
     assert typed_observer.events == []
     assert global_observer.events == []
+
+
+def test_publish_continues_when_global_observer_fails():
+    bus = EventBus()
+
+    class FailingObserver:
+        def notify(self, event):
+            raise RuntimeError("boom")
+
+    healthy = SpyObserver()
+
+    bus.subscribe_all(FailingObserver())
+    bus.subscribe_all(healthy)
+
+    event = Event.create(
+        event_type="prompt.received",
+        source="RequestHandler",
+        correlation_id="corr-safe-1",
+    )
+
+    bus.publish(event)
+
+    assert healthy.events == [event]
+
+
+def test_publish_continues_when_typed_observer_fails():
+    bus = EventBus()
+
+    class FailingObserver:
+        def notify(self, event):
+            raise RuntimeError("boom")
+
+    healthy = SpyObserver()
+
+    bus.subscribe("command.completed", FailingObserver())
+    bus.subscribe("command.completed", healthy)
+
+    event = Event.create(
+        event_type="command.completed",
+        source="ExecutingState",
+        correlation_id="corr-safe-2",
+    )
+
+    bus.publish(event)
+
+    assert healthy.events == [event]

@@ -14,7 +14,22 @@ codebase simpler and more readable, for example:
     from metis.events import Event, EventBus, Observer
 """
 
+
 from .bus import EventBus, Observer
 from .event import Event
+from .observers import (
+    AnalyticsObserver,
+    LoggingObserver,
+    MetricsObserver,
+    SafetyObserver,
+)
 
-__all__ = ["Event", "Observer", "EventBus"]
+__all__ = [
+    "Event",
+    "Observer",
+    "EventBus",
+    "LoggingObserver",
+    "MetricsObserver",
+    "AnalyticsObserver",
+    "SafetyObserver",
+]

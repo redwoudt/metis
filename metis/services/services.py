@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from metis.events import EventBus
-from metis.events.observers import (
+from metis.events import (
     AnalyticsObserver,
     LoggingObserver,
     MetricsObserver,

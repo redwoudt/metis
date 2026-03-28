@@ -1,7 +1,7 @@
 import logging
 
 from metis.events import Event
-from metis.events.observers import (
+from metis.events import (
     AnalyticsObserver,
     LoggingObserver,
     MetricsObserver,

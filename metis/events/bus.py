@@ -13,13 +13,19 @@ This implementation supports:
 - subscribing to all events
 - unsubscribing from both
 - publishing an event to matching observers
+
+Important behavior:
+- Observer failures are isolated so they do not break publishers
 """
 
 from collections import defaultdict
+import logging
 from threading import RLock
 from typing import DefaultDict, Protocol, runtime_checkable
 
 from .event import Event
+
+logger = logging.getLogger("metis.events.bus")
 
 
 @runtime_checkable
@@ -61,7 +67,7 @@ class EventBus:
 
     Thread-safety:
     - Uses a re-entrant lock to protect subscription mutation and snapshotting
-    - Dispatch itself is synchronous and performed outside the lock where possible
+    - Dispatch itself is synchronous and performed outside the lock
       to avoid holding the lock while observer code runs
     """
 
@@ -157,6 +163,9 @@ class EventBus:
         We snapshot subscriber lists under the lock, then notify outside the
         lock so that observer code cannot block subscription changes.
 
+        Observer failures are isolated and logged so they do not break the
+        publisher or prevent other observers from receiving the event.
+
         Args:
             event:
                 The structured event to dispatch.
@@ -166,10 +175,27 @@ class EventBus:
             typed_subscribers = list(self._subscribers.get(event.event_type, []))
 
         for observer in global_subscribers:
-            observer.notify(event)
+            self._notify_safely(observer, event)
 
         for observer in typed_subscribers:
+            self._notify_safely(observer, event)
+
+    def _notify_safely(self, observer: Observer, event: Event) -> None:
+        """
+        Notify a single observer, isolating failures.
+
+        This keeps the observer system passive: observers may fail, but their
+        failures should not alter the core execution flow of the system.
+        """
+        try:
             observer.notify(event)
+        except Exception as exc:
+            logger.exception(
+                "Observer %s failed while handling event %s: %s",
+                type(observer).__name__,
+                event.event_type,
+                exc,
+            )
 
     def has_subscribers(self, event_type: str) -> bool:
         """
