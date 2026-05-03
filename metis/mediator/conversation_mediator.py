@@ -259,6 +259,9 @@ class ConversationMediator:
                 engine._explicit_state = True
 
         engine.preferences["correlation_id"] = context.correlation_id
+        engine.services = context.services
+        engine.event_bus = context.event_bus
+        engine.user_id = context.user_id
 
         has_existing_execute_tool = callable(getattr(engine, "execute_tool", None))
         was_mediator_injected = bool(

@@ -85,11 +85,11 @@ class ClarifyingState(ConversationState):
 
         # Pattern B: Heuristic scan against known tools (defensive)
         if not tool_name:
-            handler = getattr(engine, "request_handler", None)
-            tools = []
-
-            if handler and hasattr(handler, "config"):
-                tools = handler.config.get("tools", [])
+            tools = engine.preferences.get("available_tools") or getattr(
+                engine,
+                "available_tools",
+                [],
+            )
 
             lower = text_response.lower()
             for name in tools:

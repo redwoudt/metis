@@ -17,14 +17,13 @@ class DummyModelManager:
         return "MODEL_NARRATION"
 
 
-class DummyHandler:
+class DummyToolExecutor:
     def __init__(self):
         self.calls = []
-        self.config = {"tools": []}
 
-    def execute_tool(self, tool_name, args, user, services):
-        self.calls.append((tool_name, args, user))
-        return f"RESULT:{tool_name}:{args}"
+    def execute_tool(self, tool_name, args, user=None, services=None):
+        self.calls.append((tool_name, args, user, services))
+        return {"result": f"RESULT:{tool_name}:{args}"}
 
 
 class DummyEngine:
@@ -35,7 +34,9 @@ class DummyEngine:
             "correlation_id": "corr-exec-1",
         }
         self.user_id = "tester"
-        self.request_handler = DummyHandler()
+        self.services = SimpleNamespace(event_bus=EventBus())
+        self.event_bus = self.services.event_bus
+        self.tool_executor = DummyToolExecutor()
         self.model_manager = DummyModelManager()
         self.state = None
 
@@ -53,12 +54,10 @@ def test_executing_state_emits_command_started_and_completed(monkeypatch):
 
     services = SimpleNamespace(event_bus=bus)
 
-    monkeypatch.setattr(
-        "metis.states.executing.metis_config.Config.services",
-        staticmethod(lambda: services),
-    )
-
     engine = DummyEngine()
+    engine.services = services
+    engine.event_bus = bus
+
     state = ExecutingState()
 
     out = state.respond(engine, "please run this tool")
@@ -76,3 +75,7 @@ def test_executing_state_emits_command_started_and_completed(monkeypatch):
     assert completed.payload["command_name"] == "search_web"
     assert started.correlation_id == "corr-exec-1"
     assert completed.correlation_id == "corr-exec-1"
+
+    assert ("search_web", {"query": "merlot"}, "tester") in [
+        call[:3] for call in engine.tool_executor.calls
+    ]
