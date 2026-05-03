@@ -15,6 +15,7 @@ from metis.scheduling.executors import TaskExecutorRegistry
 from metis.scheduling.retry import FixedDelayRetryPolicy
 from metis.scheduling.scheduler import InMemoryTaskScheduler, SQLiteTaskScheduler
 from metis.scheduling.worker import Worker
+from metis.tools import ToolExecutor
 
 
 class QuotaService:
@@ -47,13 +48,12 @@ def execute_tool_task(task, context=None):
         raise ValueError("tool_command task requires 'tool_name' in payload.")
 
     services = get_services()
-
-    # Use shared handler instead of constructing directly
-    handler = services.get_request_handler(
-        config={"vendor": "mock", "model": "stub", "policies": {}}
+    return services.tool_executor.execute_tool(
+        tool_name=tool_name,
+        args=args,
+        user=user,
+        services=services,
     )
-
-    return handler.execute_tool(tool_name, args=args, user=user, services=services)
 
 
 def execute_generic_task(task, context=None):
@@ -76,6 +76,7 @@ class Services:
         # ------------------------------------------------------------------
         self.quota = QuotaService()
         self.audit_logger = logging.getLogger("metis.audit")
+        self.tool_executor = ToolExecutor(services=self)
 
         self.clock = Clock()
         self.retry_policy = FixedDelayRetryPolicy()

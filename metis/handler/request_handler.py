@@ -1,16 +1,13 @@
 import logging
 
-from metis.commands import command_registry
-from metis.commands.base import ToolContext
 from metis.components.session_manager import SessionManager
 from metis.config import Config
 from metis.conversation_engine import ConversationEngine
-from metis.exceptions import ToolExecutionError
-from metis.handlers.pipelines import build_light_pipeline, build_strict_pipeline
 from metis.memory.manager import MemoryManager
 from metis.mediator import ConversationMediator
 from metis.policy.rate_limit import RateLimitPolicy
 from metis.prompts.builders.prompt_builder import PromptBuilder
+from metis.tools import ToolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +17,7 @@ class RequestHandler:
     Thin request-facing façade.
 
     The request lifecycle is coordinated by ConversationMediator.
-    Tool execution remains here temporarily for compatibility and will be
-    extracted into ToolExecutor in the next PR.
+    Tool execution is delegated to ToolExecutor.
     """
 
     def __init__(
@@ -33,6 +29,7 @@ class RequestHandler:
         config=None,
         mediator=None,
         services=None,
+        tool_executor=None,
     ):
         self.session_manager = SessionManager()
         self.prompt_builder = PromptBuilder()
@@ -50,6 +47,11 @@ class RequestHandler:
         }
 
         self.services = services or Config.services()
+        self.tool_executor = (
+            tool_executor
+            or getattr(self.services, "tool_executor", None)
+            or ToolExecutor(services=self.services)
+        )
 
         if mediator is not None:
             self.mediator = mediator
@@ -75,49 +77,20 @@ class RequestHandler:
                 engine_cls=ConversationEngine,
             )
 
-    # ------------------------------------------------------------------
-    # Tool execution entry point (Command + CoR)
-    # ------------------------------------------------------------------
     def execute_tool(self, tool_name, args=None, user=None, services=None):
         """
-        Resolve and execute a tool command through the handler pipeline.
+        Backward-compatible wrapper.
 
-        This remains on RequestHandler during PR3 for backward compatibility.
-        PR4 will move this into a dedicated ToolExecutor collaborator.
+        Tool execution now belongs to ToolExecutor. This method remains so
+        existing callers and tests can migrate gradually.
         """
-        if tool_name not in command_registry:
-            raise ToolExecutionError(f"Unknown tool '{tool_name}'")
-
-        command = command_registry[tool_name]()
-        services = services or self.services or Config.services()
-        safe_args = dict(args or {})
-
-        if user is None:
-            user = safe_args.get("user")
-        if user is not None and "user" not in safe_args:
-            safe_args["user"] = user
-
-        context = ToolContext(
-            command=command,
-            args=safe_args,
+        return self.tool_executor.execute_tool(
+            tool_name=tool_name,
+            args=args,
             user=user,
-            metadata={"allow_user_tools": True},
-            services=services,
+            services=services or self.services,
         )
 
-        if tool_name in {"execute_sql", "schedule_task"} and services is not None:
-            pipeline = build_strict_pipeline(
-                services.quota,
-                services.audit_logger,
-            )
-        else:
-            pipeline = build_light_pipeline()
-
-        return pipeline.handle(context).result
-
-    # ------------------------------------------------------------------
-    # Main request handling
-    # ------------------------------------------------------------------
     def handle_prompt(self, user_id, user_input, save=False, undo=False):
         logger.info("[handle_prompt] user_id='%s' input='%s'", user_id, user_input)
         return self.mediator.handle_request(

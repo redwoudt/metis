@@ -260,8 +260,24 @@ class ConversationMediator:
 
         engine.preferences["correlation_id"] = context.correlation_id
 
-        if self.request_handler is not None:
-            engine.execute_tool = self.request_handler.execute_tool
+        has_existing_execute_tool = callable(getattr(engine, "execute_tool", None))
+        was_mediator_injected = bool(
+            getattr(engine, "_mediator_injected_execute_tool", False)
+        )
+
+        if not has_existing_execute_tool or was_mediator_injected:
+            if context.services is not None:
+                engine.tool_executor = getattr(context.services, "tool_executor", None)
+
+            if getattr(engine, "tool_executor", None) is None and self.request_handler is not None:
+                engine.tool_executor = getattr(self.request_handler, "tool_executor", None)
+
+            if getattr(engine, "tool_executor", None) is not None:
+                engine.execute_tool = engine.tool_executor.execute_tool
+                engine._mediator_injected_execute_tool = True
+            elif self.request_handler is not None:
+                engine.execute_tool = self.request_handler.execute_tool
+                engine._mediator_injected_execute_tool = True
 
         engine.preferences.update(session.tool_preferences)
 

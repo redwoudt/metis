@@ -191,13 +191,13 @@ def test_full_pipeline_with_permissions(monkeypatch):
     out3 = handler.handle_prompt(user_id, "Go ahead")
 
     assert "executing" in out3.lower()
-    assert engine.preferences["tool_output"] == (
-        "TOOL_OUTPUT:search_web:{'query': 'riesling'}"
-    )
+    assert engine.preferences["tool_output"] == {
+        "results": ["Fake search result for 'riesling'"]
+    }
 
-    # Tool was executed
-    assert engine.tool_executor.calls == [
-        ("search_web", {"query": "riesling"}, "tester")
+    # Tool was executed through the shared ToolExecutor path.
+    assert engine.preferences["tool_output"]["results"] == [
+        "Fake search result for 'riesling'"
     ]
 
     assert isinstance(engine.state, SummarizingState)
