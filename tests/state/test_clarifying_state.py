@@ -20,21 +20,6 @@ class DummyModelManager:
         return self.response
 
 
-class DummyRequestHandler:
-    """
-    RequestHandler stub.
-
-    ClarifyingState now inspects:
-        engine.request_handler.config.get("tools", [])
-
-    so we must provide a minimal config dict.
-    """
-    config = {
-        "tools": []  # no tools available unless explicitly returned by the model
-    }
-
-    def execute_tool(self, tool_name, args, user, services):
-        return "NOT_EXECUTED"
 
 
 class DummyEngine(ConversationEngine):
@@ -42,7 +27,7 @@ class DummyEngine(ConversationEngine):
     ConversationEngine stub that exposes:
     - preferences
     - fake model_manager
-    - fake request_handler (with config)
+    - available_tools
     """
     def __init__(self, model_response):
         # A full ConversationEngine normally requires a ModelManager,
@@ -50,7 +35,7 @@ class DummyEngine(ConversationEngine):
         self.model_manager = DummyModelManager(model_response)
         self.preferences = {}
         self.user_id = "user_test"
-        self.request_handler = DummyRequestHandler()
+        self.available_tools = []
         self.state = ClarifyingState()
 
     def generate_with_model(self, prompt_text: str, **kwargs) -> str:
@@ -108,7 +93,7 @@ def test_clarifying_extracts_tool_call():
 def test_clarifying_does_not_fail_without_tool_call():
     """
     If the model returns plain text, ClarifyingState should NOT crash
-    or attempt to infer tools from configuration.
+    or infer tools when no available tools are configured.
     """
     engine = DummyEngine(model_response="No tool call here.")
 
@@ -116,4 +101,20 @@ def test_clarifying_does_not_fail_without_tool_call():
 
     assert out == "No tool call here."
     assert "tool_name" not in engine.preferences
+    assert isinstance(engine.state, ExecutingState)
+
+
+def test_clarifying_uses_available_tools_from_engine_preferences():
+    """
+    ClarifyingState can infer a tool from engine.preferences["available_tools"]
+    without reaching into RequestHandler config.
+    """
+    engine = DummyEngine(model_response="You should use search_web for this.")
+    engine.preferences["available_tools"] = ["search_web"]
+
+    out = engine.state.respond(engine, "Find wines")
+
+    assert out == "You should use search_web for this."
+    assert engine.preferences["tool_name"] == "search_web"
+    assert engine.preferences["tool_args"] == {"input": "Find wines"}
     assert isinstance(engine.state, ExecutingState)

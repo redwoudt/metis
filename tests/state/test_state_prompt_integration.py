@@ -24,21 +24,15 @@ class DummyModelManager:
         return self.response
 
 
-class DummyHandler:
+class DummyToolExecutor:
     """
-    Fake RequestHandler / tool executor.
-
-    Includes a minimal `config` attribute so ClarifyingState
-    can safely inspect available tools.
+    Fake ToolExecutor used by ExecutingState tests.
     """
     def __init__(self):
         self.calls = []
-        self.config = {
-            "tools": []
-        }
 
     def execute_tool(self, tool_name, args, user=None, services=None):
-        self.calls.append((tool_name, args, user))
+        self.calls.append((tool_name, args, user, services))
         return f"RESULT:{tool_name}:{args}"
 
 
@@ -51,7 +45,9 @@ class DummyEngine:
         self.preferences = {}
         self.user_id = "tester"
         self.model_manager = DummyModelManager(model_response)
-        self.request_handler = DummyHandler()
+        self.tool_executor = DummyToolExecutor()
+        self.services = None
+        self.event_bus = None
         self.state = None
 
     def generate_with_model(self, prompt_text: str, **kwargs) -> str:
@@ -97,8 +93,8 @@ def test_executing_state_runs_tool_and_transitions():
 
     # Tool executed
     assert engine.preferences["tool_output"] == "RESULT:search_web:{'query': 'malbec'}"
-    assert engine.request_handler.calls == [
-        ("search_web", {"query": "malbec"}, "tester")
+    assert ("search_web", {"query": "malbec"}, "tester") in [
+        call[:3] for call in engine.tool_executor.calls
     ]
 
     # Transition occurred

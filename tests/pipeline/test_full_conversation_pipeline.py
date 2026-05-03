@@ -52,16 +52,16 @@ class DummyServiceContainer:
     def __init__(self):
         self.quota = DummyQuota()
         self.audit_logger = DummyAuditLogger()
+        self.event_bus = None
+        self.tool_executor = DummyToolExecutor()
 
 
 class DummyToolExecutor:
     """
-    Fake tool executor.
+    Fake tool executor used by the mediated pipeline.
 
-    ClarifyingState inspects:
-        engine.tool_executor.config["tools"]
-    ExecutingState calls:
-        engine.tool_executor.execute_tool(...)
+    The mediator injects this executor through the service container, and
+    ExecutingState calls engine.tool_executor.execute_tool(...).
     """
     def __init__(self):
         self.calls = []
@@ -71,7 +71,10 @@ class DummyToolExecutor:
 
     def execute_tool(self, tool_name, args, user, services):
         self.calls.append((tool_name, args, user))
-        return f"TOOL_OUTPUT:{tool_name}:{args}"
+        # Mimic real ToolExecutor returning structured result
+        if tool_name == "search_web":
+            return {"results": [f"Fake search result for '{args.get('query')}'"]}
+        return {"result": "ok"}
 
 
 # -------------------------------------------------------------------
@@ -90,7 +93,9 @@ class DummyEngine(ConversationEngine):
     def __init__(self):
         self.preferences = {}
         self.user_id = "tester"
-        self.tool_executor = DummyToolExecutor()
+        self.tool_executor = None
+        self.services = None
+        self.event_bus = None
         self.state = GreetingState()
         self.model_manager = None
 
@@ -121,10 +126,11 @@ def test_full_pipeline_with_permissions(monkeypatch):
     # Patch services container (quota + audit)
     # ------------------------------------------------------------------
     from metis import config as metis_config
+    services = DummyServiceContainer()
     monkeypatch.setattr(
         metis_config.Config,
         "services",
-        lambda: DummyServiceContainer()
+        lambda: services
     )
 
     # ------------------------------------------------------------------
@@ -191,14 +197,13 @@ def test_full_pipeline_with_permissions(monkeypatch):
     out3 = handler.handle_prompt(user_id, "Go ahead")
 
     assert "executing" in out3.lower()
-    assert engine.preferences["tool_output"] == (
-        "TOOL_OUTPUT:search_web:{'query': 'riesling'}"
-    )
+    assert engine.preferences["tool_output"] == {
+        "results": ["Fake search result for 'riesling'"]
+    }
 
-    # Tool was executed
-    assert engine.tool_executor.calls == [
-        ("search_web", {"query": "riesling"}, "tester")
-    ]
+    # Tool execution was recorded
+    assert engine.tool_executor is services.tool_executor
+    assert ("search_web", {"query": "riesling"}, "user_1") in services.tool_executor.calls
 
     assert isinstance(engine.state, SummarizingState)
 

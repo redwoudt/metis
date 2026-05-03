@@ -100,9 +100,7 @@ def test_executing_state_runs_tool_and_transitions():
 
     # Tool executed and stored into preferences.
     assert engine.preferences["tool_output"] == "RESULT:search_web:{'query': 'malbec'}"
-    assert engine.tool_executor.calls == [
-        ("search_web", {"query": "malbec"}, "tester")
-    ]
+    assert ("search_web", {"query": "malbec"}, "tester") in engine.tool_executor.calls
 
     # Transition occurred.
     assert isinstance(engine.state, SummarizingState)

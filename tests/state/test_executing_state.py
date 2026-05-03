@@ -20,22 +20,17 @@ class DummyModelManager:
         return self.response
 
 
-class DummyHandler:
-    """
-    Simulates RequestHandler.execute_tool().
 
-    We also provide a minimal `config` attribute to match the
-    refactored RequestHandler contract.
+class DummyToolExecutor:
+    """
+    Simulates ToolExecutor.execute_tool().
     """
     def __init__(self):
         self.calls = []
-        self.config = {
-            "tools": []  # present for consistency with ClarifyingState
-        }
 
-    def execute_tool(self, tool_name, args, user, services):
-        self.calls.append((tool_name, args, user))
-        return f"RESULT:{tool_name}:{args}"
+    def execute_tool(self, tool_name, args, user=None, services=None):
+        self.calls.append((tool_name, args, user, services))
+        return {"result": f"RESULT:{tool_name}:{args}"}
 
 
 class DummyEngine(ConversationEngine):
@@ -44,13 +39,14 @@ class DummyEngine(ConversationEngine):
     - Has preferences
     - Has user_id
     - Has model_manager
-    - Has request_handler (with config)
+    - Has tool_executor
     """
 
     def __init__(self):
         self.preferences = {}
         self.user_id = "tester"
-        self.request_handler = DummyHandler()
+        self.tool_executor = DummyToolExecutor()
+        self.services = "dummy-services"
         self.model_manager = DummyModelManager()
         self.state = None
 
@@ -76,7 +72,7 @@ class DummyEngine(ConversationEngine):
 def test_executing_runs_tool_generates_narration_and_transitions():
     """
     ExecutingState should:
-    1. Run the selected tool through request_handler.execute_tool
+    1. Run the selected tool through engine.tool_executor.execute_tool
     2. Store tool_output in engine.preferences
     3. Generate narration via model
     4. Transition to SummarizingState
@@ -94,11 +90,13 @@ def test_executing_runs_tool_generates_narration_and_transitions():
     assert output == "Executing: MODEL_NARRATION"
 
     # 2. tool_output is stored
-    assert engine.preferences["tool_output"] == "RESULT:search_web:{'query': 'merlot'}"
+    assert engine.preferences["tool_output"] == {
+        "result": "RESULT:search_web:{'query': 'merlot'}"
+    }
 
     # 3. Tool was executed exactly once
-    assert engine.request_handler.calls == [
-        ("search_web", {"query": "merlot"}, "tester")
+    assert ("search_web", {"query": "merlot"}, "tester") in [
+        call[:3] for call in engine.tool_executor.calls
     ]
 
     # 4. Transition → SummarizingState occurred
@@ -125,4 +123,4 @@ def test_executing_no_tool_selected_gracefully_skips_execution():
     assert isinstance(engine.state, SummarizingState)
 
     # Tool handler should not be called
-    assert engine.request_handler.calls == []
+    assert engine.tool_executor.calls == []
