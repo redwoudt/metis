@@ -4,13 +4,13 @@ from metis.commands import command_registry
 from metis.commands.base import ToolContext
 from metis.components.session_manager import SessionManager
 from metis.config import Config
+from metis.conversation_engine import ConversationEngine
 from metis.exceptions import ToolExecutionError
 from metis.handlers.pipelines import build_light_pipeline, build_strict_pipeline
 from metis.memory.manager import MemoryManager
 from metis.mediator import ConversationMediator
 from metis.policy.rate_limit import RateLimitPolicy
 from metis.prompts.builders.prompt_builder import PromptBuilder
-from metis.conversation_engine import ConversationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class RequestHandler:
         memory_manager=None,
         config=None,
         mediator=None,
+        services=None,
     ):
         self.session_manager = SessionManager()
         self.prompt_builder = PromptBuilder()
@@ -48,15 +49,31 @@ class RequestHandler:
             "policies": getattr(Config, "MODEL_POLICIES", {}),
         }
 
-        self.mediator = mediator or ConversationMediator(
-            session_manager=self.session_manager,
-            policy=self.policy,
-            auth_policy=self.auth_policy,
-            strategy=self.strategy,
-            config=self.config,
-            request_handler=self,
-            engine_cls=ConversationEngine,
-        )
+        self.services = services or Config.services()
+
+        if mediator is not None:
+            self.mediator = mediator
+        elif hasattr(self.services, "build_conversation_mediator"):
+            self.mediator = self.services.build_conversation_mediator(
+                session_manager=self.session_manager,
+                policy=self.policy,
+                auth_policy=self.auth_policy,
+                strategy=self.strategy,
+                config=self.config,
+                request_handler=self,
+                engine_cls=ConversationEngine,
+            )
+        else:
+            self.mediator = ConversationMediator(
+                session_manager=self.session_manager,
+                policy=self.policy,
+                auth_policy=self.auth_policy,
+                strategy=self.strategy,
+                config=self.config,
+                request_handler=self,
+                services=self.services,
+                engine_cls=ConversationEngine,
+            )
 
     # ------------------------------------------------------------------
     # Tool execution entry point (Command + CoR)
@@ -65,14 +82,14 @@ class RequestHandler:
         """
         Resolve and execute a tool command through the handler pipeline.
 
-        This remains on RequestHandler during PR2 for backward compatibility.
-        PR3/PR4 will move this into a dedicated ToolExecutor collaborator.
+        This remains on RequestHandler during PR3 for backward compatibility.
+        PR4 will move this into a dedicated ToolExecutor collaborator.
         """
         if tool_name not in command_registry:
             raise ToolExecutionError(f"Unknown tool '{tool_name}'")
 
         command = command_registry[tool_name]()
-        services = services or Config.services()
+        services = services or self.services or Config.services()
         safe_args = dict(args or {})
 
         if user is None:
