@@ -12,25 +12,26 @@ class RequestContext:
     user_id: str
     user_input: str
 
-    # Cleaned input after DSL stripping
     clean_input: str = ""
+    save: bool = False
+    undo: bool = False
 
-    # Correlation ID for tracing/debugging
     correlation_id: str = field(default_factory=lambda: str(uuid4()))
 
-    # DSL parsing output
+    services: Any = None
+    event_bus: Any = None
+
     dsl_context: Dict[str, Any] = field(default_factory=dict)
 
-    # Tool execution
     tool_name: Optional[str] = None
     tool_args: Dict[str, Any] = field(default_factory=dict)
 
-    # Session + engine
     session: Any = None
     engine: Any = None
 
-    # Model selection
     model_role: str = "analysis"
+    model_client: Any = None
+    model_manager: Any = None
+    initial_state: Any = None
 
-    # Final response
     response: str = ""
