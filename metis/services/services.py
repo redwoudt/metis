@@ -37,7 +37,7 @@ class QuotaService:
 
 def execute_tool_task(task, context=None):
     """
-    Execute a scheduled tool task using the standard RequestHandler tool path.
+    Execute a scheduled tool task through the shared ToolExecutor.
     """
     payload = task.payload or {}
     tool_name = payload.get("tool_name")

@@ -79,10 +79,11 @@ class RequestHandler:
 
     def execute_tool(self, tool_name, args=None, user=None, services=None):
         """
-        Backward-compatible wrapper.
+        Deprecated compatibility wrapper.
 
-        Tool execution now belongs to ToolExecutor. This method remains so
-        existing callers and tests can migrate gradually.
+        Tool execution belongs to ToolExecutor. This method remains as a
+        stable façade entry point for existing callers, but new code should
+        depend on ToolExecutor directly.
         """
         return self.tool_executor.execute_tool(
             tool_name=tool_name,

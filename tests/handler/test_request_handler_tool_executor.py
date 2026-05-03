@@ -15,12 +15,18 @@ class SpyToolExecutor:
         return "tool-result"
 
 
-def test_request_handler_delegates_tool_execution_to_tool_executor():
+def test_request_handler_execute_tool_wrapper_delegates_to_tool_executor():
+    """
+    RequestHandler.execute_tool remains only as a compatibility wrapper.
+    Tool execution itself belongs to ToolExecutor.
+    """
     executor = SpyToolExecutor()
     handler = RequestHandler(
         mediator=SpyMediator(),
         tool_executor=executor,
     )
+
+    assert handler.tool_executor is executor
 
     result = handler.execute_tool(
         "search_web",

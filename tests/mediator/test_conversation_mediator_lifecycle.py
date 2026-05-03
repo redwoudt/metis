@@ -31,12 +31,19 @@ class AllowPolicy:
         return None
 
 
+
 class SpyObserver:
     def __init__(self):
         self.events = []
 
     def notify(self, event):
         self.events.append(event)
+
+
+# DummyToolExecutor for tool_executor injection tests
+class DummyToolExecutor:
+    def execute_tool(self, tool_name, args=None, user=None, services=None):
+        return {"result": "ok"}
 
 
 def test_mediator_runs_request_lifecycle(monkeypatch):
@@ -142,3 +149,46 @@ def test_mediator_publishes_failure_event(monkeypatch):
 
     failed_event = next(event for event in spy.events if event.event_type == "response.failed")
     assert failed_event.payload["error_type"] == "PermissionError"
+
+
+# Test: ConversationMediator injects tool_executor without execute_tool compatibility method
+def test_mediator_injects_tool_executor_without_execute_tool_compatibility(monkeypatch):
+    """
+    ConversationMediator should inject ToolExecutor into the engine without
+    adding the old engine.execute_tool compatibility method.
+    """
+    tool_executor = DummyToolExecutor()
+    services = SimpleNamespace(event_bus=None, tool_executor=tool_executor)
+
+    monkeypatch.setattr(
+        "metis.mediator.conversation_mediator.Config.services",
+        staticmethod(lambda: services),
+    )
+
+    captured = {}
+
+    def fake_respond(self, user_input):
+        captured["engine"] = self
+        return "ok"
+
+    monkeypatch.setattr(
+        "metis.conversation_engine.ConversationEngine.respond",
+        fake_respond,
+        raising=True,
+    )
+
+    session_manager = DummySessionManager()
+    mediator = ConversationMediator(
+        session_manager=session_manager,
+        policy=AllowPolicy(),
+        config={"vendor": "mock", "model": "stub", "policies": {}},
+    )
+
+    response = mediator.handle_request("u1", "hello")
+
+    assert response == "ok"
+    engine = captured["engine"]
+    assert engine.tool_executor is tool_executor
+    assert engine.services is services
+    assert engine.user_id == "u1"
+    assert not hasattr(engine, "execute_tool")

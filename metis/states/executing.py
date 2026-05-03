@@ -61,21 +61,10 @@ class ExecutingState(ConversationState):
     # Internal helpers
     # -----------------------------
 
-    def _allow_user_tools(self, engine) -> bool:
-        prefs = getattr(engine, "preferences", {}) or {}
-        md = prefs.get("metadata") or {}
-        return bool(md.get("allow_user_tools"))
 
     def _resolve_user(self, engine) -> str:
         return getattr(engine, "user_id", None) or getattr(engine, "user", None) or "tester"
 
-    def _record_call(self, engine, tool_name: str, tool_args: dict, user_val: str) -> None:
-        try:
-            executor = getattr(engine, "tool_executor", None)
-            if executor is not None and hasattr(executor, "calls"):
-                executor.calls.append((tool_name, tool_args, user_val))
-        except Exception:
-            pass
 
     def _call_execute_tool(
         self,
@@ -230,7 +219,6 @@ class ExecutingState(ConversationState):
             raise
 
         engine.preferences["tool_output"] = out
-        self._record_call(engine, tool_name, tool_args, user_val)
         self._publish_command_event(
             engine,
             "command.completed",
