@@ -16,6 +16,7 @@ from metis.scheduling.retry import FixedDelayRetryPolicy
 from metis.scheduling.scheduler import InMemoryTaskScheduler, SQLiteTaskScheduler
 from metis.scheduling.worker import Worker
 from metis.tools import ToolExecutor
+from metis.inspection import InspectionService
 
 
 class QuotaService:
@@ -77,6 +78,11 @@ class Services:
         self.quota = QuotaService()
         self.audit_logger = logging.getLogger("metis.audit")
         self.tool_executor = ToolExecutor(services=self)
+
+        # Visitor-based inspection service.
+        # Runtime components create inspection records; this service runs
+        # focused visitors over those records when debugging or reporting.
+        self.inspection_service = InspectionService()
 
         self.clock = Clock()
         self.retry_policy = FixedDelayRetryPolicy()

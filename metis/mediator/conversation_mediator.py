@@ -51,6 +51,11 @@ class ConversationMediator:
 
         self.engine_cls = engine_cls
 
+        # Holds the most recent visitor-safe execution trace.
+        # This is useful for local debugging and CLI inspection commands.
+        # Production systems would usually export traces to durable storage.
+        self.last_execution_trace = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -81,6 +86,13 @@ class ConversationMediator:
             self.apply_rendering_preferences(context)
             self.apply_state_strategy(context)
             self.execute_turn(context)
+
+            # Visitor integration point: build one immutable inspection record
+            # after execution, so visitors can inspect the completed request
+            # without running inside the runtime components themselves.
+            context.execution_trace = self.build_execution_trace(context)
+            self.last_execution_trace = context.execution_trace
+
             self.publish_response_generated(context)
             self.persist_session(context)
             return context.response
@@ -212,6 +224,18 @@ class ConversationMediator:
         if tool_name:
             context.session.tool_preferences["tool_name"] = tool_name
             context.session.tool_preferences["tool_args"] = context.tool_args
+
+            # Record the intended tool command for Visitor inspection.
+            # This captures the request structure without coupling ToolExecutor
+            # or the command handlers to instrumentation visitors.
+            from metis.inspection.records import ToolCommandRecord
+
+            context.inspection_tool_commands.append(
+                ToolCommandRecord(
+                    name=str(tool_name),
+                    args=dict(context.tool_args or {}),
+                )
+            )
 
     def select_model(self, context: RequestContext) -> None:
         dsl_ctx = context.dsl_context or {}
@@ -346,6 +370,77 @@ class ConversationMediator:
 
         if hasattr(context.engine, "state") and context.engine.state is not None:
             context.session.state = context.engine.state.__class__.__name__
+
+    def build_prompt_plan_record(self, context: RequestContext):
+        """
+        Build a visitor-safe prompt record from the request context.
+
+        This first implementation records the cleaned user input and any parsed
+        DSL context. Later chapters can enrich this with the full PromptBuilder
+        output without changing the Visitor interfaces.
+        """
+        from metis.inspection.records import PromptPlan, PromptSection
+
+        sections = [
+            PromptSection(
+                name="user_input",
+                role="user",
+                content=context.clean_input or "",
+            )
+        ]
+
+        if context.dsl_context:
+            sections.append(
+                PromptSection(
+                    name="dsl_context",
+                    role="system",
+                    content=str(context.dsl_context),
+                )
+            )
+
+        return PromptPlan(sections=sections)
+
+    def build_model_call_record(self, context: RequestContext):
+        """
+        Build a visitor-safe model call summary.
+
+        The record intentionally captures stable metadata only. It does not expose
+        provider SDK clients, credentials, transport state, or retry internals.
+        """
+        from metis.inspection.records import ModelCallRecord
+
+        model_client = context.model_client
+        provider = getattr(model_client, "provider", None) or type(model_client).__name__
+        model = getattr(model_client, "model", None) or getattr(model_client, "model_name", None)
+        if model is None:
+            model = type(model_client).__name__
+
+        return ModelCallRecord(
+            provider=str(provider),
+            model=str(model),
+            prompt_length=len(context.clean_input or ""),
+            response_length=len(context.response or ""),
+        )
+
+    def build_execution_trace(self, context: RequestContext):
+        """
+        Assemble the request-level entry point for Visitor traversal.
+
+        The mediator is the right place to build this record because it already
+        coordinates the full request lifecycle and has access to the records
+        produced along the way.
+        """
+        from metis.inspection.records import ExecutionTrace, ResponseNode
+
+        return ExecutionTrace(
+            correlation_id=context.correlation_id,
+            user_id=context.user_id,
+            prompt_plan=self.build_prompt_plan_record(context),
+            tool_commands=list(context.inspection_tool_commands),
+            tool_results=list(context.inspection_tool_results),
+            model_call=self.build_model_call_record(context),
+            response=ResponseNode(content=context.response or ""),
+        )
 
     def publish_response_generated(self, context: RequestContext) -> None:
         if context.event_bus is None:
