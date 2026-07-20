@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from metis.states.greeting import GreetingState
-from metis.memory.snapshot import ConversationSnapshot
+from metis.memory.pool import ArtifactPool
+from metis.memory.snapshot import ConversationMemento, ConversationSnapshot
 from metis.models.adapters.base import RespondingModel
 from metis.prompts.prompt import Prompt
 
@@ -56,6 +57,11 @@ class ConversationEngine:
             "context": "",
             "tool_output": "",
         }
+
+        # Stable knowledge configured for this conversation. Chapter 14 stores
+        # these values once in the Flyweight pool and puts only references in
+        # subsequent mementos.
+        self.shared_artifacts = {}
 
         # --- Bridge Collaborator (ModelManager) ---
         self.model_manager = model_manager
@@ -564,8 +570,102 @@ class ConversationEngine:
         logger.debug("[ConversationEngine] Snapshot created")
         return snapshot
 
-    def restore_snapshot(self, snapshot):
+    def configure_shared_memory(self, artifacts: Mapping[str, Any]) -> None:
+        """Attach stable prompt, schema, or policy content to the conversation."""
+        self.shared_artifacts = dict(artifacts)
+
+    def create_memento(
+        self,
+        artifact_pool: ArtifactPool,
+        *,
+        tenant_id: str,
+        artifact_versions: Optional[Mapping[str, str]] = None,
+        model_role: Optional[str] = None,
+    ) -> ConversationMemento:
+        """Create a lean checkpoint backed by canonical shared artifacts."""
+        versions = dict(artifact_versions or {})
+        shared_refs = {}
+        for name, content in sorted(self.shared_artifacts.items()):
+            shared_refs[name] = artifact_pool.intern(
+                tenant_id=tenant_id,
+                artifact_type=f"shared:{name}",
+                version=versions.get(name, "v1"),
+                content=content,
+            )
+
+        history_refs = [
+            artifact_pool.intern(
+                tenant_id=tenant_id,
+                artifact_type="conversation-history",
+                version="v1",
+                content=entry,
+            )
+            for entry in self.history
+        ]
+
+        state_class = self.state.__class__ if self.state is not None else GreetingState
+        state_type = f"{state_class.__module__}:{state_class.__qualname__}"
+        if "<locals>" in state_type:
+            raise ValueError(
+                "Lean mementos require an importable conversation state class"
+            )
+
+        resolved_role = model_role or getattr(self.model_manager, "role", None)
+        if not resolved_role:
+            resolved_role = "analysis"
+
+        memento = ConversationMemento.create(
+            state_type=state_type,
+            model_role=str(resolved_role),
+            preferences=self.preferences,
+            history_refs=history_refs,
+            artifact_refs=shared_refs,
+        )
+        logger.debug(
+            "[ConversationEngine] Lean memento created with %d references",
+            len(memento.references),
+        )
+        return memento
+
+    @staticmethod
+    def _instantiate_state(state_type: str):
+        """Recreate a state from the stable module-qualified name in a memento."""
+        import importlib
+
+        module_name, separator, qualified_name = state_type.partition(":")
+        if not separator or not module_name or not qualified_name:
+            raise ValueError(f"Invalid conversation state type: {state_type!r}")
+        target = importlib.import_module(module_name)
+        for part in qualified_name.split("."):
+            target = getattr(target, part)
+        return target()
+
+    def restore_memento(
+        self,
+        memento: ConversationMemento,
+        artifact_pool: ArtifactPool,
+    ) -> None:
+        """Restore session state while retaining live infrastructure objects."""
+        restored = memento.restore_data(artifact_pool)
+        self.state = self._instantiate_state(restored["state_type"])
+        self.history = list(restored["history"])
+        self.preferences = dict(restored["preferences"])
+        self.shared_artifacts = dict(restored["shared_artifacts"])
+        self.model_role = restored["model_role"]
+        self.__dict__.pop("request_handler", None)
+        self._refresh_model_ref()
+        logger.debug("[ConversationEngine] State restored from lean memento")
+
+    def restore_snapshot(self, snapshot, artifact_pool=None):
         """Restore engine state from a previously created snapshot."""
+        if isinstance(snapshot, ConversationMemento):
+            if artifact_pool is None:
+                raise ValueError(
+                    "artifact_pool is required to restore a ConversationMemento"
+                )
+            self.restore_memento(snapshot, artifact_pool)
+            return
+
         state_data = snapshot.get_state()
         # Never restore deprecated/back-compat fields
         if isinstance(state_data, dict):
@@ -586,6 +686,9 @@ class ConversationEngine:
                 "context": "",
                 "tool_output": "",
             }
+
+        if not hasattr(self, "shared_artifacts") or self.shared_artifacts is None:
+            self.shared_artifacts = {}
 
         # Ensure deprecated attribute never exists on the instance
         self.__dict__.pop("request_handler", None)
