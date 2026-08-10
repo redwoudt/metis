@@ -7,16 +7,18 @@ Observer Pattern in the system:
 - Event: the structured event envelope used across the application
 - Observer: the observer contract
 - EventBus: the in-process event dispatcher
+- EventPublisher: the narrow publishing contract
+- NullEventPublisher: the neutral publisher used when dispatch is optional
 
 Keeping these exports in __init__.py makes imports elsewhere in the
 codebase simpler and more readable, for example:
 
-    from metis.events import Event, EventBus, Observer
+    from metis.events import Event, EventBus, EventPublisher, Observer
 """
-
 
 from .bus import EventBus, Observer
 from .event import Event
+from .publisher import EventPublisher, NullEventPublisher
 from .observers import (
     AnalyticsObserver,
     LoggingObserver,
@@ -28,6 +30,8 @@ __all__ = [
     "Event",
     "Observer",
     "EventBus",
+    "EventPublisher",
+    "NullEventPublisher",
     "LoggingObserver",
     "MetricsObserver",
     "AnalyticsObserver",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from metis.events import Event
+from metis.events import Event, EventPublisher, NullEventPublisher
 
 from .clock import Clock
 from .retry import RetryPolicy, FixedDelayRetryPolicy
@@ -29,13 +29,15 @@ class Worker:
         clock: Clock | None = None,
         retry_policy: RetryPolicy | None = None,
         executor_registry: Any = None,
-        event_bus: Any = None,
+        event_bus: EventPublisher | None = None,
     ):
         self.scheduler = scheduler
         self.clock = clock or Clock()
         self.retry_policy = retry_policy or FixedDelayRetryPolicy()
         self.executor_registry = executor_registry
-        self.event_bus = event_bus
+        self.event_bus: EventPublisher = (
+            event_bus if event_bus is not None else NullEventPublisher()
+        )
 
     def _publish_task_event(
         self,
@@ -43,18 +45,15 @@ class Worker:
         event_type: str,
         *,
         severity: str = "INFO",
-        extra_payload: dict | None = None,
+        extra_payload: dict[str, Any] | None = None,
     ) -> None:
         """
-        Publish a task lifecycle event when an EventBus is configured.
+        Publish a task lifecycle event through the configured publisher.
 
         Worker owns task execution state transitions, so it is the correct
         publisher for task.started / task.completed / task.failed / task.retried
         / task.abandoned events.
         """
-        if self.event_bus is None:
-            return
-
         correlation_id = None
         if isinstance(task.payload, dict):
             correlation_id = task.payload.get("correlation_id")
@@ -64,7 +63,9 @@ class Worker:
         payload = {
             "task_id": task.id,
             "task_type": task.task_type,
-            "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+            "status": (
+                task.status.value if hasattr(task.status, "value") else str(task.status)
+            ),
             "retries": task.retries,
             "max_retries": task.max_retries,
         }
@@ -100,7 +101,9 @@ class Worker:
 
         return processed
 
-    def _execute_task(self, task: BackgroundCommand, context: Any = None) -> BackgroundCommand:
+    def _execute_task(
+        self, task: BackgroundCommand, context: Any = None
+    ) -> BackgroundCommand:
         """
         Execute one task and update its lifecycle state.
 
@@ -148,15 +151,19 @@ class Worker:
             # Retry if still within the allowed attempt budget.
             if task.retries <= task.max_retries:
                 task.status = TaskStatus.SCHEDULED
-                task.scheduled_for = self.clock.now() + self.retry_policy.next_delay(task.retries)
+                task.scheduled_for = self.clock.now() + self.retry_policy.next_delay(
+                    task.retries
+                )
                 self._publish_task_event(
                     task,
                     "task.retried",
                     severity="WARNING",
                     extra_payload={
-                        "next_scheduled_for": task.scheduled_for.isoformat()
-                        if hasattr(task.scheduled_for, "isoformat")
-                        else str(task.scheduled_for),
+                        "next_scheduled_for": (
+                            task.scheduled_for.isoformat()
+                            if hasattr(task.scheduled_for, "isoformat")
+                            else str(task.scheduled_for)
+                        ),
                     },
                 )
             else:
