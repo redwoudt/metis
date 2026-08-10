@@ -1,9 +1,23 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
+from metis.events import NullEventPublisher
 from metis.scheduling.clock import TestClock
 from metis.scheduling.retry import FixedDelayRetryPolicy
-from metis.scheduling.scheduler import BackgroundCommand, InMemoryTaskScheduler, TaskStatus
+from metis.scheduling.scheduler import (
+    BackgroundCommand,
+    InMemoryTaskScheduler,
+    TaskStatus,
+)
 from metis.scheduling.worker import Worker
+
+
+def test_worker_defaults_to_null_event_publisher():
+    clock = TestClock(datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc))
+    scheduler = InMemoryTaskScheduler(clock=clock)
+
+    worker = Worker(scheduler=scheduler, clock=clock)
+
+    assert isinstance(worker.event_bus, NullEventPublisher)
 
 
 def test_worker_executes_due_task():
@@ -33,6 +47,7 @@ def test_worker_retries_failed_task():
     """
     A failing task should be rescheduled when retry budget remains.
     """
+
     class FailingTask(BackgroundCommand):
         def execute(self, context=None):
             raise RuntimeError("temporary failure")

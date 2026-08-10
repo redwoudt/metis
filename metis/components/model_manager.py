@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 ModelManager acts as the Bridge implementor, routing text generation requests to a unified model interface.
 
@@ -10,19 +11,26 @@ Adapters and proxies may return richer payloads internally, but ModelManager
 is the *single normalization point* that always returns plain text.
 """
 
+import logging
 from typing import Any
 from uuid import uuid4
 
+from metis.events import Event, EventPublisher, NullEventPublisher
 from metis.models.adapters.base import RespondingModel
-from metis.events import Event
-import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ModelManager:
-    def __init__(self, model_client: RespondingModel, event_bus=None):
+    def __init__(
+        self,
+        model_client: RespondingModel,
+        event_bus: EventPublisher | None = None,
+    ):
         self.model_client: RespondingModel = model_client
-        self.event_bus = event_bus
+        self.event_bus: EventPublisher = (
+            event_bus if event_bus is not None else NullEventPublisher()
+        )
         logger.debug("[ModelManager] model_client=%s", type(self.model_client).__name__)
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
@@ -38,22 +46,23 @@ class ModelManager:
             "model_client": type(self.model_client).__name__,
         }
 
-        if self.event_bus is not None:
-            self.event_bus.publish(
-                Event.create(
-                    event_type="model.requested",
-                    source="ModelManager",
-                    correlation_id=correlation_id,
-                    payload={
-                        "prompt_length": len(prompt or ""),
-                    },
-                    metadata=metadata,
-                )
+        self.event_bus.publish(
+            Event.create(
+                event_type="model.requested",
+                source="ModelManager",
+                correlation_id=correlation_id,
+                payload={
+                    "prompt_length": len(prompt or ""),
+                },
+                metadata=metadata,
             )
+        )
 
         try:
             # Preferred path: adapters / proxies exposing `generate()`
-            if hasattr(self.model_client, "generate") and callable(getattr(self.model_client, "generate")):
+            if hasattr(self.model_client, "generate") and callable(
+                getattr(self.model_client, "generate")
+            ):
                 out = getattr(self.model_client, "generate")(prompt, **kwargs)
 
                 if isinstance(out, dict):
@@ -66,38 +75,36 @@ class ModelManager:
                 # Fallback: minimal responding interface
                 result = self.model_client.respond(prompt, **kwargs)
 
-            if self.event_bus is not None:
-                self.event_bus.publish(
-                    Event.create(
-                        event_type="model.responded",
-                        source="ModelManager",
-                        correlation_id=correlation_id,
-                        payload={
-                            "prompt_length": len(prompt or ""),
-                            "response_length": len(result or ""),
-                        },
-                        metadata=metadata,
-                    )
+            self.event_bus.publish(
+                Event.create(
+                    event_type="model.responded",
+                    source="ModelManager",
+                    correlation_id=correlation_id,
+                    payload={
+                        "prompt_length": len(prompt or ""),
+                        "response_length": len(result or ""),
+                    },
+                    metadata=metadata,
                 )
+            )
 
             return result
 
         except Exception as exc:
-            if self.event_bus is not None:
-                self.event_bus.publish(
-                    Event.create(
-                        event_type="model.failed",
-                        source="ModelManager",
-                        correlation_id=correlation_id,
-                        payload={
-                            "prompt_length": len(prompt or ""),
-                            "error_type": exc.__class__.__name__,
-                            "error_message": str(exc),
-                        },
-                        metadata=metadata,
-                        severity="ERROR",
-                    )
+            self.event_bus.publish(
+                Event.create(
+                    event_type="model.failed",
+                    source="ModelManager",
+                    correlation_id=correlation_id,
+                    payload={
+                        "prompt_length": len(prompt or ""),
+                        "error_type": exc.__class__.__name__,
+                        "error_message": str(exc),
+                    },
+                    metadata=metadata,
+                    severity="ERROR",
                 )
+            )
             raise
 
     def respond(self, prompt: str, **kwargs: Any) -> str:
