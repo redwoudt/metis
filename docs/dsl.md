@@ -31,7 +31,7 @@ Keys are case-insensitive. Whitespace around keys, colons, and values is ignored
 ```
 prompt      ::= expression*
 expression  ::= "[" key ":" value "]"
-key         ::= IDENT                   ; canonical: persona|task|length|format|tone|source
+key         ::= IDENT                   ; canonical keys are listed below
 value       ::= VALUE                   ; any run of characters without ']' (trimmed)
 ```
 
@@ -43,6 +43,37 @@ value       ::= VALUE                   ; any run of characters without ']' (tri
 - `format` — Preferred output structure, e.g., *bullets*, *paragraphs*, *JSON*.
 - `tone` — Emotional tone or style of the response.
 - `source` — External resource (must be an `http(s)` URL).
+- `style` — Response-generation style such as `concise`, `creative`, or `analytical`.
+- `behavior` — System behavior template such as `balanced`, `creative`, or `safety-first`.
+- `safety_enabled` — Enables or requests output safety processing.
+- `format_markdown` — Enables Markdown response formatting.
+- `include_citations` — Requests citations in the rendered response.
+- `tool`, `args`, and `tool_call` — Describe a tool request and its arguments.
+
+## Behavior Template Selection
+
+The `behavior` key selects a coherent request-level policy before tool, model,
+and response decisions are made:
+
+```
+[behavior: creative] Draft three campaign concepts
+```
+
+Behavior templates use the following ordinary precedence:
+
+1. An explicit `[behavior: ...]` request.
+2. The configured `behavior_template` default.
+3. The built-in `balanced` default.
+
+Trusted system guardrails are evaluated above that precedence. A configured
+high-risk task selects `safety-first` even when the request asks for another
+template. Unknown explicit template names fail clearly instead of silently
+falling back.
+
+The `behavior` and `style` keys have different scopes. `behavior` coordinates
+model role, response style, tool permission, and required safeguards. `style`
+continues to control the Chapter 9 response-generation strategy when the
+balanced behavior baseline is active.
 
 ## Validation Rules
 

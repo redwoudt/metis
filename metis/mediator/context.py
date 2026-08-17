@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from metis.behavior import BehaviorPlan
 
 
 @dataclass
@@ -22,6 +25,7 @@ class RequestContext:
     event_bus: Any = None
 
     dsl_context: Dict[str, Any] = field(default_factory=dict)
+    behavior_plan: Optional["BehaviorPlan"] = None
 
     tool_name: Optional[str] = None
     tool_args: Dict[str, Any] = field(default_factory=dict)

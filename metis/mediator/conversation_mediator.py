@@ -28,6 +28,7 @@ class ConversationMediator:
             policy: Any = None,
             auth_policy: Any = None,
             strategy: Any = None,
+            behavior_strategy: Any = None,
             config: dict | None = None,
             request_handler: Any = None,
             services: Any = None,
@@ -42,6 +43,11 @@ class ConversationMediator:
             "model": getattr(Config, "DEFAULT_MODEL", "gpt-4o-mini"),
             "policies": getattr(Config, "MODEL_POLICIES", {}),
         }
+        if behavior_strategy is None:
+            from metis.behavior import build_default_behavior_strategy
+
+            behavior_strategy = build_default_behavior_strategy(self.config)
+        self.behavior_strategy = behavior_strategy
         self.request_handler = request_handler
         self.services = services
         if engine_cls is None:
@@ -79,6 +85,7 @@ class ConversationMediator:
             self.load_session(context)
             self.normalise_session(context)
             self.parse_dsl(context)
+            self.resolve_behavior(context)
             self.select_tool(context)
             self.select_model(context)
             self.configure_engine(context)
@@ -218,6 +225,12 @@ class ConversationMediator:
             tool_name = tool_call.get("name")
             tool_args = tool_call.get("arguments", {}) or {}
 
+        plan = context.behavior_plan
+        if tool_name and plan is not None and not plan.allow_tools:
+            raise PermissionError(
+                f"Behavior template '{plan.name}' does not allow tool execution"
+            )
+
         context.tool_name = tool_name
         context.tool_args = tool_args or {}
 
@@ -240,11 +253,18 @@ class ConversationMediator:
     def select_model(self, context: RequestContext) -> None:
         dsl_ctx = context.dsl_context or {}
 
-        context.model_role = (
-            str(dsl_ctx.get("task")).lower()
-            if dsl_ctx.get("task")
-            else "analysis"
-        )
+        plan = context.behavior_plan
+        task_role = str(dsl_ctx.get("task", "")).strip().lower()
+        registered_roles = getattr(Config, "MODEL_REGISTRY", {})
+        if plan is not None and plan.name != "balanced":
+            context.model_role = plan.model_role
+        elif task_role and task_role in registered_roles:
+            # Preserve the role-selection contract introduced in Chapter 6.
+            context.model_role = task_role
+        elif plan is not None:
+            context.model_role = plan.model_role
+        else:
+            context.model_role = task_role or "analysis"
 
         if dsl_ctx.get("task"):
             task = str(dsl_ctx.get("task")).lower()
@@ -302,10 +322,16 @@ class ConversationMediator:
             from metis.response.generation.selector import StrategySelector
 
             selector = StrategySelector()
-            context.engine.response_strategy = selector.select(
-                context.dsl_context,
-                self.config,
-            )
+            dsl_context = context.dsl_context
+            plan = context.behavior_plan
+            if plan is not None and (
+                dsl_context.get("behavior") or plan.name != "balanced"
+            ):
+                dsl_context = {
+                    **dsl_context,
+                    "style": plan.response_style,
+                }
+            context.engine.response_strategy = selector.select(dsl_context, self.config)
         except Exception:
             logger.exception("[ConversationMediator] Response strategy selection failed")
 
@@ -319,6 +345,37 @@ class ConversationMediator:
             preferences["format_markdown"] = bool(dsl_ctx["format_markdown"])
         if "include_citations" in dsl_ctx:
             preferences["include_citations"] = bool(dsl_ctx["include_citations"])
+
+        plan = context.behavior_plan
+        if plan is not None:
+            if plan.require_safety:
+                preferences["safety_enabled"] = True
+            if plan.include_citations:
+                preferences["include_citations"] = True
+
+    def resolve_behavior(self, context: RequestContext) -> None:
+        from metis.behavior import BehaviorContext
+
+        dsl_ctx = context.dsl_context or {}
+        task = str(dsl_ctx.get("task", "")).strip().lower()
+        high_risk_tasks = {
+            str(item).strip().lower()
+            for item in self.config.get(
+                "high_risk_tasks",
+                {"medical", "legal", "financial", "safety"},
+            )
+        }
+        risk = "high" if task in high_risk_tasks else str(
+            self.config.get("risk", "normal")
+        )
+
+        context.behavior_plan = self.behavior_strategy.choose(
+            BehaviorContext(
+                requested_template=dsl_ctx.get("behavior"),
+                configured_default=self.config.get("behavior_template"),
+                risk=risk,
+            )
+        )
 
     def apply_state_strategy(self, context: RequestContext) -> None:
         if self.strategy is None:

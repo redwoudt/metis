@@ -13,6 +13,7 @@ class PromptContext(TypedDict, total=False):
     format: str
     tone: str
     source: str
+    behavior: str
 
     # Tool execution (Chapter 8)
     tool: str
