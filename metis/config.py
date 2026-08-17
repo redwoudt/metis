@@ -7,9 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# NEW IMPORT: services container
-from metis.services.services import get_services
-
 
 def resolve_env(value: str) -> str:
     if value.startswith("env:"):
@@ -65,4 +62,8 @@ class Config:
             services.quota
             services.audit_logger
         """
+        # Lazy import prevents the configuration module and composition root
+        # from importing one another while plugin registries are assembled.
+        from metis.services.services import get_services
+
         return get_services()

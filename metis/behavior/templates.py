@@ -36,7 +36,15 @@ DEFAULT_TEMPLATES = {
 }
 
 
-def build_default_behavior_strategy(config: Mapping[str, Any]) -> BehaviorStrategy:
+def build_default_behavior_strategy(
+    config: Mapping[str, Any],
+    templates: Mapping[str, BehaviorPlan] | None = None,
+) -> BehaviorStrategy:
+    available = dict(templates or DEFAULT_TEMPLATES)
     configured = str(config.get("behavior_template") or "balanced").strip().lower()
-    base = TemplateBehaviorStrategy(DEFAULT_TEMPLATES, default_name=configured)
-    return RiskAwareBehaviorStrategy(base, DEFAULT_TEMPLATES["safety-first"])
+    base = TemplateBehaviorStrategy(available, default_name=configured)
+    try:
+        safety_plan = available["safety-first"]
+    except KeyError as exc:
+        raise ValueError("Behavior templates must retain 'safety-first'") from exc
+    return RiskAwareBehaviorStrategy(base, safety_plan)

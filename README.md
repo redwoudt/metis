@@ -155,6 +155,24 @@ To check the current test coverage run:
 
 make coverage
 
+### Try the Chapter 17 Plugin Host
+
+Mêtis discovers separately installed capabilities through the
+`metis_genai.plugins` entry-point group, but imports only plugins named in the
+deployment allow-list. Install the provider-free echo example and compare the
+discovered and enabled states:
+
+```sh
+python -m pip install -e examples/metis_echo_plugin
+python -m metis.examples.chapter17_plugins --list
+python -m metis.examples.chapter17_plugins --enable echo --list
+```
+
+For application startup, set `METIS_ENABLED_PLUGINS` to a comma-separated list.
+Set `METIS_STRICT_PLUGINS=true` when failure of an enabled plugin must stop
+startup. See [`docs/plugins.md`](docs/plugins.md) for the versioned contract,
+supported contribution types, lifecycle, and trust boundary.
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

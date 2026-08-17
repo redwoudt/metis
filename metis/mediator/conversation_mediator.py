@@ -29,6 +29,7 @@ class ConversationMediator:
             auth_policy: Any = None,
             strategy: Any = None,
             behavior_strategy: Any = None,
+            model_resolver: Any = None,
             config: dict | None = None,
             request_handler: Any = None,
             services: Any = None,
@@ -48,6 +49,7 @@ class ConversationMediator:
 
             behavior_strategy = build_default_behavior_strategy(self.config)
         self.behavior_strategy = behavior_strategy
+        self.model_resolver = model_resolver or ModelFactory.for_role
         self.request_handler = request_handler
         self.services = services
         if engine_cls is None:
@@ -273,7 +275,7 @@ class ConversationMediator:
 
                 context.initial_state = SummarizingState()
 
-        context.model_client = ModelFactory.for_role(context.model_role, self.config)
+        context.model_client = self.model_resolver(context.model_role, self.config)
         context.model_manager = ModelManager(
             context.model_client,
             event_bus=context.event_bus,

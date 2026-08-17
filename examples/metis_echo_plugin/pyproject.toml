@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metis-echo-plugin"
+version = "1.0.0"
+description = "Provider-free example plugin for Mêtis Chapter 17"
+requires-python = ">=3.10"
+dependencies = ["metis-genai>=0.1.0"]
+
+[project.entry-points."metis_genai.plugins"]
+echo = "metis_echo_plugin.plugin:plugin"
