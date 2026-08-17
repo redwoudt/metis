@@ -32,6 +32,9 @@ KNOWN_KEYS: Set[str] = {
     # Response style selection
     "style",
 
+    # System behavior template selection (Chapter 16)
+    "behavior",
+
     # Response rendering preferences
     "safety_enabled",
     "format_markdown",

@@ -10,6 +10,7 @@ from .ast import (
     ToneExpr,
     SourceExpr,
     StyleExpr,
+    BehaviorExpr,
     SafetyEnabledExpr,
     FormatMarkdownExpr,
     IncludeCitationsExpr,
@@ -29,6 +30,9 @@ KEY_TO_EXPR = {
 
     # Response style selection
     "style": StyleExpr,
+
+    # System behavior template selection (Chapter 16)
+    "behavior": BehaviorExpr,
 
     # Response rendering preferences
     "safety_enabled": SafetyEnabledExpr,

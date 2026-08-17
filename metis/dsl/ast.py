@@ -77,6 +77,14 @@ class StyleExpr(Expression):
 
 
 @dataclass
+class BehaviorExpr(Expression):
+    value: str
+
+    def interpret(self, context: Dict[str, Any]) -> None:
+        context["behavior"] = self.value
+
+
+@dataclass
 class SafetyEnabledExpr(Expression):
     value: str
 
