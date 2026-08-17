@@ -30,6 +30,11 @@ _MAP = {
 }
 
 
+def available_response_styles() -> frozenset[str]:
+    """Return the stable names accepted by the generation selector."""
+    return frozenset(_MAP)
+
+
 class StrategySelector:
     """
     Selects the appropriate generation strategy.

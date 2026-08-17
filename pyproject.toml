@@ -12,7 +12,11 @@ authors = [
     { name = "Ferdinand Redelinghuys", email = "fcredelinghuys@gmail.com" }
 ]
 dependencies = []
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["metis*"]
+exclude = ["tests*", "docs*", "examples*", "images*"]
 
 
 [tool.black]

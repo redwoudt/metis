@@ -15,14 +15,17 @@ class ToolExecutor:
     tasks, and other orchestration layers.
     """
 
-    def __init__(self, services: Any = None):
+    def __init__(self, services: Any = None, commands: Any = None):
         self.services = services
+        # The module mapping remains the compatibility default. The Services
+        # composition root injects the frozen extension registry instead.
+        self.command_registry = command_registry if commands is None else commands
 
     def execute_tool(self, tool_name, args=None, user=None, services=None):
-        if tool_name not in command_registry:
+        if tool_name not in self.command_registry:
             raise ToolExecutionError(f"Unknown tool '{tool_name}'")
 
-        command = command_registry[tool_name]()
+        command = self.command_registry[tool_name]()
         services = services or self.services or self._get_services()
         safe_args = dict(args or {})
 
