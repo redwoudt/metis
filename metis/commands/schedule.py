@@ -79,6 +79,7 @@ class ScheduleTaskCommand(ToolCommand):
                 "tool_name": tool_name,
                 "args": task_args,
                 "user": context.user,
+                "correlation_id": context.metadata.get("correlation_id"),
             }
         else:
             task_type = "generic"
@@ -98,6 +99,13 @@ class ScheduleTaskCommand(ToolCommand):
             created_by=context.user,
             payload=payload,
         )
+
+        # Retried side effects need a stable identity.  Downstream command
+        # implementations can pass this key to the external system they call.
+        if task_type == "tool_command":
+            task.payload["idempotency_key"] = (
+                context.args.get("idempotency_key") or task.id
+            )
 
         # Persist the task into the scheduler.
         scheduler.schedule(task)

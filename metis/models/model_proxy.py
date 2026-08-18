@@ -142,7 +142,11 @@ class ModelProxy(ModelClient):
         log_enabled = bool(self.policies.get("log"))
 
         if log_enabled:
-            logger.debug("[proxy] generate(prompt=%r, kwargs=%r)", prompt, kwargs)
+            logger.debug(
+                "[proxy] generate prompt_length=%d option_names=%s",
+                len(prompt or ""),
+                sorted(kwargs),
+            )
 
         # block empty -> string response (tests expect a plain string here)
         if self.policies.get("block_empty") and not str(prompt).strip():
@@ -158,7 +162,7 @@ class ModelProxy(ModelClient):
         cache_key = f"{prompt}|{tuple(sorted(kwargs.items()))}"
         if self.cache_enabled and cache_key in self.cache:
             if log_enabled:
-                logger.debug("[proxy] Cache hit for %s", cache_key)
+                logger.debug("[proxy] Cache hit")
             self._record_usage(latency_ms=0)
             return self.cache[cache_key]  # exact same object
 

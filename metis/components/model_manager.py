@@ -15,7 +15,12 @@ import logging
 from typing import Any
 from uuid import uuid4
 
-from metis.events import Event, EventPublisher, NullEventPublisher
+from metis.events import (
+    Event,
+    EventPublisher,
+    NullEventPublisher,
+    exception_summary,
+)
 from metis.models.adapters.base import RespondingModel
 
 logger = logging.getLogger(__name__)
@@ -98,8 +103,7 @@ class ModelManager:
                     correlation_id=correlation_id,
                     payload={
                         "prompt_length": len(prompt or ""),
-                        "error_type": exc.__class__.__name__,
-                        "error_message": str(exc),
+                        **exception_summary(exc),
                     },
                     metadata=metadata,
                     severity="ERROR",

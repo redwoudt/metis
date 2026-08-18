@@ -94,25 +94,19 @@ class ConversationEngine:
         except Exception:
             self.response_composer = None
 
-        # ------------------------------------------------------------------
-        # Tool executor (required by pipeline tests)
-        # ------------------------------------------------------------------
-        self.tool_executor = None
-
-        try:
-            from metis.config import Config
-            services = Config.services()
-            self.tool_executor = getattr(services, "tool_executor", None)
-        except Exception:
-            self.tool_executor = None
-
-        # Fallback dummy executor (used in tests)
-        if self.tool_executor is None:
-            self.tool_executor = DefaultToolExecutor()
-        else:
-            # Ensure calls list exists (pipeline asserts against it)
-            if not hasattr(self.tool_executor, "calls"):
-                self.tool_executor.calls = []
+        # Infrastructure is injected by the composition root.  Constructing a
+        # conversation engine must not resolve the process-global Services
+        # container or create runtime state as a side effect.
+        self.services = kwargs.get("services")
+        self.event_bus = kwargs.get("event_bus")
+        self.tool_executor = (
+            kwargs.get("tool_executor")
+            or getattr(self.services, "tool_executor", None)
+            or DefaultToolExecutor()
+        )
+        # Ensure calls list exists (pipeline tests assert against it).
+        if not hasattr(self.tool_executor, "calls"):
+            self.tool_executor.calls = []
 
         # Expose active model for tests/debugging only (never used for execution)
         self.model: Optional[RespondingModel] = None
@@ -491,22 +485,22 @@ class ConversationEngine:
         self._refresh_model_ref()
         logger.debug("[ConversationEngine] generate_with_model() model ref now: %s", type(getattr(self, "model", None)).__name__)
         logger.debug(
-            "[ConversationEngine] Delegating prompt to ModelManager: %r",
-            prompt[:200],
+            "[ConversationEngine] Delegating prompt to ModelManager: length=%d",
+            len(prompt or ""),
         )
 
-        try:
-            if self.response_strategy is not None:
-                generated = self.response_strategy.generate(
-                    self.model_manager,
-                    prompt,
-                    **gen_kwargs,
-                )
-            else:
-                generated = self.model_manager.generate(prompt, **gen_kwargs)
-        except Exception as e:
-            logger.error("[ConversationEngine] ModelManager.generate failed: %s", e)
-            generated = ""
+        correlation_id = (self.preferences or {}).get("correlation_id")
+        if correlation_id:
+            gen_kwargs.setdefault("correlation_id", correlation_id)
+
+        if self.response_strategy is not None:
+            generated = self.response_strategy.generate(
+                self.model_manager,
+                prompt,
+                **gen_kwargs,
+            )
+        else:
+            generated = self.model_manager.generate(prompt, **gen_kwargs)
 
         if isinstance(generated, dict):
             generated = generated.get("text", "")
@@ -564,7 +558,8 @@ class ConversationEngine:
         # Never persist deprecated/back-compat fields
         state = dict(self.__dict__)
         state.pop("request_handler", None)
-        state.pop("tool_executor", None)
+        for infrastructure_name in ("tool_executor", "services", "event_bus"):
+            state.pop(infrastructure_name, None)
 
         snapshot = ConversationSnapshot(state)
         logger.debug("[ConversationEngine] Snapshot created")
@@ -666,6 +661,9 @@ class ConversationEngine:
             self.restore_memento(snapshot, artifact_pool)
             return
 
+        live_tool_executor = getattr(self, "tool_executor", None)
+        live_services = getattr(self, "services", None)
+        live_event_bus = getattr(self, "event_bus", None)
         state_data = snapshot.get_state()
         # Never restore deprecated/back-compat fields
         if isinstance(state_data, dict):
@@ -693,14 +691,10 @@ class ConversationEngine:
         # Ensure deprecated attribute never exists on the instance
         self.__dict__.pop("request_handler", None)
 
-        # tool_executor is intentionally not snapshotted; rehydrate it
-        if not hasattr(self, "tool_executor") or self.tool_executor is None:
-            try:
-                from metis.config import Config
-                services = Config.services()
-                self.tool_executor = getattr(services, "tool_executor", None) or DefaultToolExecutor()
-            except Exception:
-                self.tool_executor = DefaultToolExecutor()
+        # Infrastructure is intentionally not restored from a checkpoint.
+        self.services = live_services
+        self.event_bus = live_event_bus
+        self.tool_executor = live_tool_executor or DefaultToolExecutor()
 
         if not hasattr(self.tool_executor, "calls"):
             self.tool_executor.calls = []

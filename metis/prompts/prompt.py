@@ -26,8 +26,14 @@ class Prompt:
         Formats the prompt as a structured string, readable and informative to the model.
         """
         logger.debug(
-            "[Prompt] Prompt.render called with tone=%r, persona=%r, task=%r, context=%r, tool_output=%r, user_input=%r",
-            self.tone, self.persona, self.task, self.context, self.tool_output, self.user_input
+            "[Prompt] render tone_length=%d persona_length=%d task_length=%d "
+            "context_length=%d tool_output_length=%d input_length=%d",
+            len(self.tone or ""),
+            len(self.persona or ""),
+            len(self.task or ""),
+            len(self.context or ""),
+            len(self.tool_output or ""),
+            len(self.user_input or ""),
         )
         messages = []
 
@@ -39,28 +45,31 @@ class Prompt:
             if self.persona:
                 system_message += f"[Persona: {self.persona}]"
             messages.append(system_message.strip())
-            logger.debug("[Prompt] Added system message: %r", system_message.strip())
+            logger.debug(
+                "[Prompt] Added system message length=%d",
+                len(system_message.strip()),
+            )
 
         # Add task definition
         if self.task:
             messages.append(f"Task: {self.task}")
-            logger.debug("[Prompt] Added task message: %r", f"Task: {self.task}")
+            logger.debug("[Prompt] Added task message length=%d", len(self.task))
 
         # Add session or scenario context
         if self.context:
             messages.append(f"Context: {self.context}")
-            logger.debug("[Prompt] Added context message: %r", f"Context: {self.context}")
+            logger.debug("[Prompt] Added context message length=%d", len(self.context))
 
         # Add external tool result, if any
         if self.tool_output:
             messages.append(f"Tool Output: {self.tool_output}")
-            logger.debug("[Prompt] Added tool output message: %r", f"Tool Output: {self.tool_output}")
+            logger.debug("[Prompt] Added tool output message length=%d", len(self.tool_output))
 
         # Add user input
         if self.user_input:
             messages.append(f"User Input: {self.user_input}")
-            logger.debug("[Prompt] Added user input message: %r", f"User Input: {self.user_input}")
+            logger.debug("[Prompt] Added user input message length=%d", len(self.user_input))
 
         rendered = "\n".join(messages)
-        logger.debug("[Prompt] Final rendered prompt: %r", rendered.replace("\n", "\\n"))
+        logger.debug("[Prompt] Final rendered prompt length=%d", len(rendered))
         return rendered

@@ -5,10 +5,11 @@ from typing import Any
 from metis.components.model_manager import ModelManager
 from metis.config import Config
 from metis.dsl import interpret_prompt_dsl
-from metis.events import Event
+from metis.events import Event, content_summary, exception_summary
 from metis.models.model_factory import ModelFactory
 
 from .context import RequestContext
+from .result import RequestResult
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class ConversationMediator:
             model_resolver: Any = None,
             config: dict | None = None,
             request_handler: Any = None,
+            memory_manager: Any = None,
             services: Any = None,
             engine_cls: Any = None,
     ):
@@ -51,6 +53,7 @@ class ConversationMediator:
         self.behavior_strategy = behavior_strategy
         self.model_resolver = model_resolver or ModelFactory.for_role
         self.request_handler = request_handler
+        self.memory_manager = memory_manager
         self.services = services
         if engine_cls is None:
             from metis.conversation_engine import ConversationEngine
@@ -59,9 +62,8 @@ class ConversationMediator:
 
         self.engine_cls = engine_cls
 
-        # Holds the most recent visitor-safe execution trace.
-        # This is useful for local debugging and CLI inspection commands.
-        # Production systems would usually export traces to durable storage.
+        # Compatibility-only local debugging surface. Concurrent and production
+        # callers should consume RequestResult.execution_trace instead.
         self.last_execution_trace = None
 
     # ------------------------------------------------------------------
@@ -74,6 +76,22 @@ class ConversationMediator:
         save: bool = False,
         undo: bool = False,
     ) -> str:
+        """Compatibility façade returning only the generated response text."""
+        return self.run_request(
+            user_id=user_id,
+            user_input=user_input,
+            save=save,
+            undo=undo,
+        ).response
+
+    def run_request(
+        self,
+        user_id: str,
+        user_input: str,
+        save: bool = False,
+        undo: bool = False,
+    ) -> RequestResult:
+        """Run the complete request lifecycle and return a request-scoped result."""
         context = self.prepare_context(
             user_id=user_id,
             user_input=user_input,
@@ -91,10 +109,12 @@ class ConversationMediator:
             self.select_tool(context)
             self.select_model(context)
             self.configure_engine(context)
+            self.restore_if_requested(context)
             self.configure_response_strategy(context)
             self.apply_rendering_preferences(context)
             self.apply_state_strategy(context)
             self.execute_turn(context)
+            self.checkpoint_if_requested(context)
 
             # Visitor integration point: build one immutable inspection record
             # after execution, so visitors can inspect the completed request
@@ -104,7 +124,13 @@ class ConversationMediator:
 
             self.publish_response_generated(context)
             self.persist_session(context)
-            return context.response
+            return RequestResult(
+                response=context.response,
+                correlation_id=context.correlation_id,
+                execution_trace=context.execution_trace,
+                checkpoint_saved=context.checkpoint_saved,
+                checkpoint_restored=context.checkpoint_restored,
+            )
 
         except Exception as exc:
             self.publish_response_failed(context, exc)
@@ -148,7 +174,7 @@ class ConversationMediator:
                 event_type="prompt.received",
                 source="ConversationMediator",
                 correlation_id=context.correlation_id,
-                payload={"user_input": context.user_input},
+                payload=content_summary(context.user_input),
                 metadata={"user_id": context.user_id},
             )
         )
@@ -248,7 +274,14 @@ class ConversationMediator:
             context.inspection_tool_commands.append(
                 ToolCommandRecord(
                     name=str(tool_name),
-                    args=dict(context.tool_args or {}),
+                    args=(
+                        dict(context.tool_args or {})
+                        if self.config.get("inspection_include_content", False)
+                        else {
+                            str(name): "<redacted>"
+                            for name in sorted(context.tool_args or {})
+                        }
+                    ),
                 )
             )
 
@@ -308,6 +341,7 @@ class ConversationMediator:
         engine.services = context.services
         engine.event_bus = context.event_bus
         engine.user_id = context.user_id
+        engine.inspection_tool_results = context.inspection_tool_results
 
         if context.services is not None:
             engine.tool_executor = getattr(context.services, "tool_executor", None)
@@ -315,9 +349,74 @@ class ConversationMediator:
         if getattr(engine, "tool_executor", None) is None and self.request_handler is not None:
             engine.tool_executor = getattr(self.request_handler, "tool_executor", None)
 
+        # Session-level presentation preferences and per-request DSL overrides
+        # must reach the engine before the state renders its prompt.
+        stored_preferences = getattr(session, "preferences", {}) or {}
+        for name in ("tone", "persona", "context"):
+            value = getattr(session, name, None)
+            if value in (None, ""):
+                value = stored_preferences.get(name)
+            if value not in (None, ""):
+                engine.preferences[name] = value
+
         engine.preferences.update(session.tool_preferences)
 
         context.engine = engine
+
+    def restore_if_requested(self, context: RequestContext) -> None:
+        """Restore the latest checkpoint for this user before current preferences."""
+        if not context.undo:
+            return
+        if self.memory_manager is None:
+            raise RuntimeError("Undo requires an injected MemoryManager")
+
+        try:
+            restored = self.memory_manager.restore_into(
+                context.engine,
+                scope=context.user_id,
+            )
+        except TypeError:
+            # Compatibility for user-supplied Chapter 14 caretakers.
+            restored = self.memory_manager.restore_into(context.engine)
+        if not restored:
+            raise LookupError("No checkpoint is available for this conversation")
+
+        # Checkpoints contain conversation state, never live infrastructure.
+        context.engine.set_model_manager(context.model_manager)
+        context.engine.services = context.services
+        context.engine.event_bus = context.event_bus
+        context.engine.user_id = context.user_id
+        context.engine.inspection_tool_results = context.inspection_tool_results
+        if context.services is not None:
+            context.engine.tool_executor = getattr(
+                context.services,
+                "tool_executor",
+                context.engine.tool_executor,
+            )
+        context.engine.preferences["correlation_id"] = context.correlation_id
+        context.session.engine = context.engine
+        context.session.history = context.engine.history
+        context.checkpoint_restored = True
+
+    def checkpoint_if_requested(self, context: RequestContext) -> None:
+        """Create a lean checkpoint only after a successful turn."""
+        if not context.save:
+            return
+        if self.memory_manager is None:
+            raise RuntimeError("Checkpointing requires an injected MemoryManager")
+
+        memento = context.engine.create_memento(
+            self.memory_manager.artifact_pool,
+            tenant_id=context.user_id,
+            model_role=context.model_role,
+        )
+        try:
+            self.memory_manager.save(memento, scope=context.user_id)
+        except TypeError:
+            # Compatibility for user-supplied Chapter 14 caretakers.
+            self.memory_manager.save(memento)
+        context.session.history = context.engine.history
+        context.checkpoint_saved = True
 
     def configure_response_strategy(self, context: RequestContext) -> None:
         try:
@@ -420,6 +519,34 @@ class ConversationMediator:
             )
 
     def execute_turn(self, context: RequestContext) -> None:
+        # A tool may have been selected on an earlier conversational turn and
+        # executed only when the State machine reaches ExecutingState.  Record
+        # that active intent in the same request trace as its outcome.
+        from metis.states.executing import ExecutingState
+
+        if (
+            isinstance(getattr(context.engine, "state", None), ExecutingState)
+            and not context.inspection_tool_commands
+        ):
+            tool_name = context.engine.preferences.get("tool_name")
+            tool_args = context.engine.preferences.get("tool_args") or {}
+            if tool_name:
+                from metis.inspection.records import ToolCommandRecord
+
+                context.inspection_tool_commands.append(
+                    ToolCommandRecord(
+                        name=str(tool_name),
+                        args=(
+                            dict(tool_args)
+                            if self.config.get("inspection_include_content", False)
+                            else {
+                                str(name): "<redacted>"
+                                for name in sorted(tool_args)
+                            }
+                        ),
+                    )
+                )
+
         response = context.engine.respond(context.clean_input)
 
         if response is None:
@@ -440,11 +567,15 @@ class ConversationMediator:
         """
         from metis.inspection.records import PromptPlan, PromptSection
 
+        include_content = bool(
+            self.config.get("inspection_include_content", False)
+        )
+
         sections = [
             PromptSection(
                 name="user_input",
                 role="user",
-                content=context.clean_input or "",
+                content=(context.clean_input or "") if include_content else "",
             )
         ]
 
@@ -453,7 +584,7 @@ class ConversationMediator:
                 PromptSection(
                     name="dsl_context",
                     role="system",
-                    content=str(context.dsl_context),
+                    content=str(context.dsl_context) if include_content else "",
                 )
             )
 
@@ -469,10 +600,16 @@ class ConversationMediator:
         from metis.inspection.records import ModelCallRecord
 
         model_client = context.model_client
-        provider = getattr(model_client, "provider", None) or type(model_client).__name__
-        model = getattr(model_client, "model", None) or getattr(model_client, "model_name", None)
-        if model is None:
-            model = type(model_client).__name__
+        provider = self._read_metadata(
+            model_client,
+            ("provider", "vendor"),
+            type(model_client).__name__,
+        )
+        model = self._read_metadata(
+            model_client,
+            ("model", "model_name"),
+            type(model_client).__name__,
+        )
 
         return ModelCallRecord(
             provider=str(provider),
@@ -480,6 +617,20 @@ class ConversationMediator:
             prompt_length=len(context.clean_input or ""),
             response_length=len(context.response or ""),
         )
+
+    @staticmethod
+    def _read_metadata(source: Any, names: tuple[str, ...], default: str) -> str:
+        """Normalize adapter/proxy metadata exposed as either values or methods."""
+        for name in names:
+            value = getattr(source, name, None)
+            if callable(value):
+                try:
+                    value = value()
+                except Exception:
+                    value = None
+            if value not in (None, ""):
+                return str(value)
+        return str(default)
 
     def build_execution_trace(self, context: RequestContext):
         """
@@ -498,7 +649,11 @@ class ConversationMediator:
             tool_commands=list(context.inspection_tool_commands),
             tool_results=list(context.inspection_tool_results),
             model_call=self.build_model_call_record(context),
-            response=ResponseNode(content=context.response or ""),
+            response=ResponseNode(
+                content=(context.response or "")
+                if self.config.get("inspection_include_content", False)
+                else ""
+            ),
         )
 
     def publish_response_generated(self, context: RequestContext) -> None:
@@ -528,8 +683,7 @@ class ConversationMediator:
                 source="ConversationMediator",
                 correlation_id=context.correlation_id,
                 payload={
-                    "error_type": exc.__class__.__name__,
-                    "error_message": str(exc),
+                    **exception_summary(exc),
                 },
                 metadata={"user_id": context.user_id},
                 severity="ERROR",

@@ -1,10 +1,17 @@
 # metis/states/executing.py
 
 import logging
+from time import perf_counter
 from uuid import uuid4
 from typing import Optional, Any, Callable
 
-from metis.events import Event
+from metis.events import (
+    Event,
+    argument_summary,
+    exception_summary,
+    result_summary,
+)
+from metis.inspection.records import ToolResultRecord
 from metis.states.base_state import ConversationState
 
 logger = logging.getLogger("metis.states.executing")
@@ -39,14 +46,13 @@ class ExecutingState(ConversationState):
             persona=engine.preferences.get("persona", ""),
         )
 
-        logger.debug("[ExecutingState] Prompt constructed: %s", rendered_prompt)
+        logger.debug(
+            "[ExecutingState] Prompt constructed: length=%d",
+            len(str(rendered_prompt)),
+        )
 
         # Ask the model for narration
-        model_response = None
-        try:
-            model_response = engine.generate_with_model(rendered_prompt)
-        except Exception as exc:
-            logger.exception("[ExecutingState] Model call failed: %s", exc)
+        model_response = engine.generate_with_model(rendered_prompt)
 
         # Transition
         engine.set_state(SummarizingState())
@@ -73,12 +79,21 @@ class ExecutingState(ConversationState):
         tool_name: str,
         tool_args: dict,
         user_val: str,
+        correlation_id: str | None = None,
     ) -> Any:
         """
         Try multiple signatures to support different handler implementations.
         """
         attempts = [
             # keyword forms
+            lambda: fn(
+                tool_name=tool_name,
+                args=tool_args,
+                user=user_val,
+                services=services,
+                correlation_id=correlation_id,
+                idempotency_key=correlation_id,
+            ),
             lambda: fn(tool_name=tool_name, args=tool_args, user=user_val, services=services),
             lambda: fn(tool_name=tool_name, args=tool_args, user=user_val),
             # positional forms
@@ -129,7 +144,7 @@ class ExecutingState(ConversationState):
         correlation_id = prefs.get("correlation_id") or str(uuid4())
         payload = {
             "command_name": tool_name,
-            "tool_args": tool_args,
+            **argument_summary(tool_args),
         }
         if extra_payload:
             payload.update(extra_payload)
@@ -144,6 +159,34 @@ class ExecutingState(ConversationState):
                     "user_id": self._resolve_user(engine),
                 },
                 severity=severity,
+            )
+        )
+
+    @staticmethod
+    def _record_tool_result(
+        engine,
+        *,
+        name: str,
+        status: str,
+        started_at: float,
+        output: Any = None,
+        error: BaseException | None = None,
+    ) -> None:
+        records = getattr(engine, "inspection_tool_results", None)
+        if not isinstance(records, list):
+            return
+        duration_ms = max(0, int((perf_counter() - started_at) * 1000))
+        if error is not None:
+            summary = f"error_type={error.__class__.__name__}"
+        else:
+            parts = result_summary(output)
+            summary = "; ".join(f"{key}={value}" for key, value in parts.items())
+        records.append(
+            ToolResultRecord(
+                name=name,
+                status=status,
+                duration_ms=duration_ms,
+                output_summary=summary,
             )
         )
 
@@ -162,7 +205,13 @@ class ExecutingState(ConversationState):
         services = getattr(engine, "services", None)
         executor = getattr(engine, "tool_executor", None)
 
-        logger.info("[ExecutingState] Attempting tool execution: %s %s", tool_name, tool_args)
+        started_at = perf_counter()
+        correlation_id = (engine.preferences or {}).get("correlation_id")
+        logger.info(
+            "[ExecutingState] Attempting tool execution: %s argument_names=%s",
+            tool_name,
+            sorted(str(name) for name in tool_args),
+        )
         self._publish_command_event(
             engine,
             "command.started",
@@ -178,7 +227,14 @@ class ExecutingState(ConversationState):
                 "command.completed",
                 tool_name,
                 tool_args,
-                extra_payload={"tool_output": out},
+                extra_payload=result_summary(out),
+            )
+            self._record_tool_result(
+                engine,
+                name=tool_name,
+                status="completed",
+                started_at=started_at,
+                output=out,
             )
             return out
 
@@ -191,7 +247,14 @@ class ExecutingState(ConversationState):
                 "command.completed",
                 tool_name,
                 tool_args,
-                extra_payload={"tool_output": out},
+                extra_payload=result_summary(out),
+            )
+            self._record_tool_result(
+                engine,
+                name=tool_name,
+                status="completed",
+                started_at=started_at,
+                output=out,
             )
             return out
 
@@ -202,19 +265,27 @@ class ExecutingState(ConversationState):
                 tool_name=tool_name,
                 tool_args=tool_args,
                 user_val=user_val,
+                correlation_id=correlation_id,
             )
         except Exception as exc:
-            logger.exception("[ExecutingState] tool_executor.execute_tool failed")
+            logger.error(
+                "[ExecutingState] tool execution failed error_type=%s",
+                exc.__class__.__name__,
+            )
             self._publish_command_event(
                 engine,
                 "command.failed",
                 tool_name,
                 tool_args,
                 severity="ERROR",
-                extra_payload={
-                    "error_type": exc.__class__.__name__,
-                    "error_message": str(exc),
-                },
+                extra_payload=exception_summary(exc),
+            )
+            self._record_tool_result(
+                engine,
+                name=tool_name,
+                status="failed",
+                started_at=started_at,
+                error=exc,
             )
             raise
 
@@ -224,6 +295,13 @@ class ExecutingState(ConversationState):
             "command.completed",
             tool_name,
             tool_args,
-            extra_payload={"tool_output": out},
+            extra_payload=result_summary(out),
+        )
+        self._record_tool_result(
+            engine,
+            name=tool_name,
+            status="completed",
+            started_at=started_at,
+            output=out,
         )
         return out

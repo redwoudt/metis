@@ -14,15 +14,27 @@ class GreetingPrompt(BasePromptTemplate):
     """
 
     def __init__(self, context="", tool_output="", tone="", persona=""):
-        super().__init__(context, tool_output, tone, persona)
-        logger.debug(f"GreetingPrompt initialized with tone='{tone}', persona='{persona}', context='{context}', tool_output='{tool_output}'")
+        super().__init__(
+            tone=tone,
+            persona=persona,
+            context=context,
+            tool_output=tool_output,
+        )
+        logger.debug(
+            "GreetingPrompt initialized tone_length=%d persona_length=%d "
+            "context_length=%d tool_output_length=%d",
+            len(tone or ""),
+            len(persona or ""),
+            len(context or ""),
+            len(tool_output or ""),
+        )
 
     def add_task_instruction(self):
         logger.debug("Setting task instruction for GreetingPrompt")
         self.prompt.task = "Generate a friendly greeting message to initiate the conversation."
 
     def set_tone(self):
-        logger.debug(f"Setting tone: {self.tone}")
+        logger.debug("Setting tone length=%d", len(self.tone or ""))
         self.prompt.tone = self.tone
 
     def inject_context(self):

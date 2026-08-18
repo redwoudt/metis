@@ -41,10 +41,13 @@ class BasePromptTemplate(ABC):
         logger.debug("[BasePromptTemplate] Injecting tool output")
         self.inject_tool_output()
 
-        logger.debug(f"[BasePromptTemplate] Setting user input: {user_input}")
+        logger.debug(
+            "[BasePromptTemplate] Setting user input length=%d",
+            len(user_input or ""),
+        )
         self.set_user_input(user_input)
 
-        logger.debug(f"[BasePromptTemplate] Final prompt constructed: {self.prompt}")
+        logger.debug("[BasePromptTemplate] Final prompt constructed")
         return self.prompt
 
     def set_tone_and_persona(self):

@@ -31,12 +31,9 @@ class SummarizingState(ConversationState):
             engine.preferences = {}
 
         logger.debug(
-            "[SummarizingState] Building prompt with tone='%s', persona='%s', context='%s', tool_output='%s', user_input='%s'",
-            engine.preferences.get("tone", ""),
-            engine.preferences.get("persona", ""),
-            engine.preferences.get("context", ""),
-            engine.preferences.get("tool_output", ""),
-            user_input,
+            "[SummarizingState] Building prompt: input_length=%d context_length=%d",
+            len(str(user_input or "")),
+            len(str(engine.preferences.get("context", "") or "")),
         )
 
         # Build a summarization prompt using the current context/preferences
@@ -57,19 +54,18 @@ class SummarizingState(ConversationState):
         except Exception:
             rendered_prompt = str(prompt)
 
-        logger.debug("[SummarizingState] Prompt constructed: %s", rendered_prompt)
+        logger.debug(
+            "[SummarizingState] Prompt constructed: length=%d",
+            len(rendered_prompt),
+        )
 
         # Ask the model via the engine/bridge
-        model_response = None
-        try:
-            logger.debug("[SummarizingState] Calling engine.generate_with_model")
-            model_response = engine.generate_with_model(rendered_prompt)
-            logger.debug("[SummarizingState] Model response: %s", model_response)
-        except Exception as exc:
-            logger.exception(
-                "[SummarizingState] Model call via engine.generate_with_model failed: %s",
-                exc,
-            )
+        logger.debug("[SummarizingState] Calling engine.generate_with_model")
+        model_response = engine.generate_with_model(rendered_prompt)
+        logger.debug(
+            "[SummarizingState] Model response received: length=%d",
+            len(str(model_response or "")),
+        )
 
         # After summarizing, reset to GreetingState for the next interaction
         engine.set_state(GreetingState())

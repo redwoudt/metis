@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from metis.events import Event, EventPublisher, NullEventPublisher
+from metis.events import (
+    Event,
+    EventPublisher,
+    NullEventPublisher,
+    exception_summary,
+)
 
 from .clock import Clock
 from .retry import RetryPolicy, FixedDelayRetryPolicy
@@ -142,10 +147,7 @@ class Worker:
                 task,
                 "task.failed",
                 severity="ERROR",
-                extra_payload={
-                    "error_type": exc.__class__.__name__,
-                    "error_message": str(exc),
-                },
+                extra_payload=exception_summary(exc),
             )
 
             # Retry if still within the allowed attempt budget.

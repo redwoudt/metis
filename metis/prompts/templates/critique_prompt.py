@@ -15,7 +15,13 @@ class CritiquePrompt(BasePromptTemplate):
 
     def __init__(self, context: str, tool_output: str = "", tone: str = "Analytical", persona: str = "Critical Reviewer"):
         super().__init__(tone, persona, context, tool_output)
-        logger.debug(f"[CritiquePrompt] Initialized with context='{context[:30]}...', tone='{tone}', persona='{persona}'")
+        logger.debug(
+            "[CritiquePrompt] Initialized context_length=%d tone_length=%d "
+            "persona_length=%d",
+            len(context or ""),
+            len(tone or ""),
+            len(persona or ""),
+        )
 
     def set_tone(self):
         logger.debug("[CritiquePrompt] Setting tone and persona")
