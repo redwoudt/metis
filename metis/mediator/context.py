@@ -38,6 +38,8 @@ class RequestContext:
     # Request-level trace assembled by the mediator after execution completes.
     # Visitors enter through this object to inspect the completed request.
     execution_trace: Any = None
+    checkpoint_saved: bool = False
+    checkpoint_restored: bool = False
 
     session: Any = None
     engine: Any = None

@@ -299,7 +299,10 @@ def test_proxy_rate_limit(monkeypatch, caplog):
     proxy_model = session.engine.get_model()
     assert proxy_model is session.engine.get_model()
 
-    # Do NOT advance time → immediate second call triggers rate limit
-    handler.handle_prompt(user_id, "[task:rate-limit-test] second call")
+    # Do NOT advance time → immediate second call triggers rate limit.  The full
+    # workflow preserves failure truth, so the error reaches the caller after
+    # failure telemetry has been emitted.
+    with pytest.raises(Exception, match="Rate limit exceeded"):
+        handler.handle_prompt(user_id, "[task:rate-limit-test] second call")
 
     assert any("Rate limit exceeded" in r.message for r in caplog.records)

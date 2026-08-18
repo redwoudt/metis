@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from threading import Lock
 from typing import Any, Iterable, Mapping
 
 from metis.behavior import build_default_behavior_strategy
@@ -40,23 +41,6 @@ class QuotaService:
             return False
         self.usage[user_id] = count + 1
         return True
-
-
-def execute_tool_task(task: Any, context: Any = None) -> Any:
-    """Execute a scheduled tool task through the shared ToolExecutor."""
-    payload = task.payload or {}
-    tool_name = payload.get("tool_name")
-    args = payload.get("args", {})
-    user = payload.get("user", task.created_by)
-    if not tool_name:
-        raise ValueError("tool_command task requires 'tool_name' in payload.")
-    services = get_services()
-    return services.tool_executor.execute_tool(
-        tool_name=tool_name,
-        args=args,
-        user=user,
-        services=services,
-    )
 
 
 def execute_generic_task(task: Any, context: Any = None) -> dict[str, Any]:
@@ -139,13 +123,33 @@ class Services:
 
         self.executor_registry = TaskExecutorRegistry()
         self.executor_registry.register("generic", execute_generic_task)
-        self.executor_registry.register("tool_command", execute_tool_task)
+        # Bind deferred tool execution to this composition root.  A worker
+        # must not resolve a second process-global Services instance and drift
+        # away from the frozen registry that admitted the command.
+        self.executor_registry.register("tool_command", self._execute_tool_task)
         self.worker = Worker(
             scheduler=self.scheduler,
             clock=self.clock,
             retry_policy=self.retry_policy,
             executor_registry=self.executor_registry,
             event_bus=self.event_bus,
+        )
+
+    def _execute_tool_task(self, task: Any, context: Any = None) -> Any:
+        """Execute a scheduled tool through this runtime's ToolExecutor."""
+        payload = task.payload or {}
+        tool_name = payload.get("tool_name")
+        args = payload.get("args", {})
+        user = payload.get("user", task.created_by)
+        if not tool_name:
+            raise ValueError("tool_command task requires 'tool_name' in payload.")
+        return self.tool_executor.execute_tool(
+            tool_name=tool_name,
+            args=args,
+            user=user,
+            services=self,
+            correlation_id=payload.get("correlation_id"),
+            idempotency_key=payload.get("idempotency_key") or task.id,
         )
 
     def build_conversation_mediator(
@@ -158,6 +162,7 @@ class Services:
         behavior_strategy: Any = None,
         config: Mapping[str, Any] | None = None,
         request_handler: Any = None,
+        memory_manager: Any = None,
         engine_cls: Any = None,
     ) -> Any:
         """Build a mediator from the final frozen runtime registries."""
@@ -178,6 +183,7 @@ class Services:
             model_resolver=self.model_factory.resolve,
             config=request_config,
             request_handler=request_handler,
+            memory_manager=memory_manager,
             services=self,
             engine_cls=engine_cls,
         )
@@ -234,8 +240,21 @@ def _plugin_config_from_env() -> dict[str, Any]:
     return {"enabled_plugins": enabled, "strict_plugins": strict}
 
 
-_services_singleton = Services()
+_services_singleton: Services | None = None
+_services_lock = Lock()
 
 
 def get_services() -> Services:
+    """Lazily create the process-level composition root on first use.
+
+    Importing :mod:`metis.services.services` is therefore read-only: it no
+    longer reads runtime configuration or creates the default SQLite database.
+    Hosts that need explicit lifetime control should construct ``Services`` and
+    inject it directly.
+    """
+    global _services_singleton
+    if _services_singleton is None:
+        with _services_lock:
+            if _services_singleton is None:
+                _services_singleton = Services()
     return _services_singleton

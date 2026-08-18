@@ -30,14 +30,19 @@ class RequestHandler:
         mediator=None,
         services=None,
         tool_executor=None,
+        session_manager=None,
     ):
-        self.session_manager = SessionManager()
+        self.session_manager = session_manager or SessionManager()
         self.prompt_builder = PromptBuilder()
 
         self.policy = policy or RateLimitPolicy()
         self.auth_policy = auth_policy
 
-        self.memory_manager = memory_manager or MemoryManager()
+        # An empty MemoryManager has length zero and is therefore falsey.  It is
+        # still the caller's intended caretaker and must not be replaced.
+        self.memory_manager = (
+            memory_manager if memory_manager is not None else MemoryManager()
+        )
         self.strategy = strategy
 
         self.config = config or {
@@ -63,6 +68,7 @@ class RequestHandler:
                 strategy=self.strategy,
                 config=self.config,
                 request_handler=self,
+                memory_manager=self.memory_manager,
                 engine_cls=ConversationEngine,
             )
         else:
@@ -73,6 +79,7 @@ class RequestHandler:
                 strategy=self.strategy,
                 config=self.config,
                 request_handler=self,
+                memory_manager=self.memory_manager,
                 services=self.services,
                 engine_cls=ConversationEngine,
             )
@@ -93,8 +100,22 @@ class RequestHandler:
         )
 
     def handle_prompt(self, user_id, user_input, save=False, undo=False):
-        logger.info("[handle_prompt] user_id='%s' input='%s'", user_id, user_input)
+        logger.info(
+            "[handle_prompt] user_id='%s' input_length=%d",
+            user_id,
+            len(user_input or ""),
+        )
         return self.mediator.handle_request(
+            user_id=user_id,
+            user_input=user_input,
+            save=save,
+            undo=undo,
+        )
+
+    def run(self, user_id, user_input, save=False, undo=False):
+        """Run one request and return its immutable response and trace bundle."""
+        logger.info("[run] user_id='%s' input_length=%d", user_id, len(user_input or ""))
+        return self.mediator.run_request(
             user_id=user_id,
             user_input=user_input,
             save=save,

@@ -59,7 +59,11 @@ def generate_prompt(
 
     # Build and return the prompt object
     prompt_obj = template.build_prompt(user_input)
-    logger.debug(f"[generate_prompt] Created prompt: {template}")
+    logger.debug(
+        "[generate_prompt] Created prompt type=%s input_length=%d",
+        prompt_type,
+        len(user_input or ""),
+    )
     return prompt_obj
 
 
@@ -83,7 +87,7 @@ def render_prompt(
         persona=persona
     )
     rendered = prompt.render()
-    logger.debug(f"[render_prompt] Final rendered prompt: {rendered}")
+    logger.debug("[render_prompt] Rendered prompt length=%d", len(rendered))
     return rendered
 
 

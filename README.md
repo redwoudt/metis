@@ -173,6 +173,22 @@ Set `METIS_STRICT_PLUGINS=true` when failure of an enabled plugin must stop
 startup. See [`docs/plugins.md`](docs/plugins.md) for the versioned contract,
 supported contribution types, lifecycle, and trust boundary.
 
+### Run the Chapter 18 Full Workflow
+
+Chapter 18 composes the request façade, mediator, model bridge, state machine,
+tools, checkpoints, events, visitors, and background worker into one workflow.
+The example is provider-free and returns an immutable, request-scoped result:
+
+```sh
+python -m metis.examples.chapter18_full_workflow
+```
+
+Existing callers can keep using `RequestHandler.handle_prompt(...)` for a plain
+string. New callers can use `RequestHandler.run(...)` to receive the response,
+correlation ID, execution trace, and checkpoint outcome. See
+[`docs/full_workflow.md`](docs/full_workflow.md) for the lifecycle and operating
+guarantees.
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

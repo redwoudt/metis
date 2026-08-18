@@ -30,13 +30,9 @@ class GreetingState(ConversationState):
             engine.preferences = {}
 
         logger.debug(
-            "[GreetingState] Building prompt with tone='%s', persona='%s', context='%s', "
-            "tool_output='%s', user_input='%s'",
-            engine.preferences.get("tone", ""),
-            engine.preferences.get("persona", ""),
-            engine.preferences.get("context", ""),
-            engine.preferences.get("tool_output", ""),
-            user_input,
+            "[GreetingState] Building prompt: input_length=%d context_length=%d",
+            len(str(user_input or "")),
+            len(str(engine.preferences.get("context", "") or "")),
         )
 
         prompt = render_prompt(
@@ -56,19 +52,18 @@ class GreetingState(ConversationState):
         except Exception:
             rendered_prompt = str(prompt)
 
-        logger.debug("[GreetingState] Prompt constructed: %s", rendered_prompt)
+        logger.debug(
+            "[GreetingState] Prompt constructed: length=%d",
+            len(rendered_prompt),
+        )
 
         # Call the model via the engine's bridge hook
-        model_response = None
-        try:
-            logger.debug("[GreetingState] Calling engine.generate_with_model")
-            model_response = engine.generate_with_model(rendered_prompt)
-            logger.debug("[GreetingState] Model response: %s", model_response)
-        except Exception as exc:
-            logger.exception(
-                "[GreetingState] Model call via engine.generate_with_model failed: %s",
-                exc,
-            )
+        logger.debug("[GreetingState] Calling engine.generate_with_model")
+        model_response = engine.generate_with_model(rendered_prompt)
+        logger.debug(
+            "[GreetingState] Model response received: length=%d",
+            len(str(model_response or "")),
+        )
 
         # Move to the next state in the conversation
         engine.set_state(ClarifyingState())

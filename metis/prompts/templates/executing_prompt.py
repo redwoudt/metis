@@ -21,11 +21,12 @@ class ExecutingPrompt(BasePromptTemplate):
             tool_output=tool_output,
         )
         logger.debug(
-            "[ExecutingPrompt] Initialized with tone='%s', persona='%s', context='%s', tool_output='%s'",
-            tone,
-            persona,
-            context,
-            tool_output,
+            "[ExecutingPrompt] Initialized tone_length=%d persona_length=%d "
+            "context_length=%d tool_output_length=%d",
+            len(tone or ""),
+            len(persona or ""),
+            len(context or ""),
+            len(tool_output or ""),
         )
 
     def add_task_instruction(self):
@@ -39,10 +40,15 @@ class ExecutingPrompt(BasePromptTemplate):
         logger.debug("[ExecutingPrompt] Injecting context")
         if self.context:
             self.prompt.context = self.context
-            logger.debug("[ExecutingPrompt] Context set to: %s", self.context)
+            logger.debug(
+                "[ExecutingPrompt] Context set length=%d", len(self.context or "")
+            )
 
     def inject_tool_output(self):
         logger.debug("[ExecutingPrompt] Injecting tool output")
         if self.tool_output:
             self.prompt.tool_output = self.tool_output
-            logger.debug("[ExecutingPrompt] Tool output set to: %s", self.tool_output)
+            logger.debug(
+                "[ExecutingPrompt] Tool output set length=%d",
+                len(self.tool_output or ""),
+            )

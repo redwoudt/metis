@@ -21,7 +21,16 @@ class ToolExecutor:
         # composition root injects the frozen extension registry instead.
         self.command_registry = command_registry if commands is None else commands
 
-    def execute_tool(self, tool_name, args=None, user=None, services=None):
+    def execute_tool(
+        self,
+        tool_name,
+        args=None,
+        user=None,
+        services=None,
+        *,
+        correlation_id=None,
+        idempotency_key=None,
+    ):
         if tool_name not in self.command_registry:
             raise ToolExecutionError(f"Unknown tool '{tool_name}'")
 
@@ -38,7 +47,11 @@ class ToolExecutor:
             command=command,
             args=safe_args,
             user=user,
-            metadata={"allow_user_tools": True},
+            metadata={
+                "allow_user_tools": True,
+                "correlation_id": correlation_id,
+                "idempotency_key": idempotency_key,
+            },
             services=services,
         )
 
@@ -52,7 +65,16 @@ class ToolExecutor:
 
         return pipeline.handle(context).result
 
-    def execute(self, tool_name, args=None, user=None, services=None):
+    def execute(
+        self,
+        tool_name,
+        args=None,
+        user=None,
+        services=None,
+        *,
+        correlation_id=None,
+        idempotency_key=None,
+    ):
         """
         Convenience alias for callers that prefer a shorter method name.
         """
@@ -61,6 +83,8 @@ class ToolExecutor:
             args=args,
             user=user,
             services=services,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
         )
 
     def _get_services(self):

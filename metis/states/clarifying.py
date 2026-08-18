@@ -31,11 +31,9 @@ class ClarifyingState(ConversationState):
         # 1. Build clarification prompt
         # -------------------------------------------------------------
         logger.debug(
-            "[ClarifyingState] Building prompt with user_input='%s', context='%s', tone='%s', persona='%s'",
-            user_input,
-            engine.preferences.get("context", ""),
-            engine.preferences.get("tone", ""),
-            engine.preferences.get("persona", ""),
+            "[ClarifyingState] Building prompt: input_length=%d context_length=%d",
+            len(str(user_input or "")),
+            len(str(engine.preferences.get("context", "") or "")),
         )
 
         prompt = render_prompt(
@@ -53,21 +51,20 @@ class ClarifyingState(ConversationState):
         except Exception:
             rendered_prompt = str(prompt)
 
-        logger.debug("[ClarifyingState] Prompt constructed: %s", rendered_prompt)
+        logger.debug(
+            "[ClarifyingState] Prompt constructed: length=%d",
+            len(rendered_prompt),
+        )
 
         # -------------------------------------------------------------
         # 2. Call the model to get clarification or structured output
         # -------------------------------------------------------------
-        model_response = None
-        try:
-            logger.debug("[ClarifyingState] Calling engine.generate_with_model")
-            model_response = engine.generate_with_model(rendered_prompt)
-            logger.debug("[ClarifyingState] Model response: %s", model_response)
-        except Exception as exc:
-            logger.exception(
-                "[ClarifyingState] Model call via engine.generate_with_model failed: %s",
-                exc,
-            )
+        logger.debug("[ClarifyingState] Calling engine.generate_with_model")
+        model_response = engine.generate_with_model(rendered_prompt)
+        logger.debug(
+            "[ClarifyingState] Model response received: length=%d",
+            len(str(model_response or "")),
+        )
 
         text_response = str(model_response) if model_response else ""
 
@@ -105,9 +102,9 @@ class ClarifyingState(ConversationState):
         # -------------------------------------------------------------
         if tool_name:
             logger.info(
-                "[ClarifyingState] Selected tool '%s' with args=%s",
+                "[ClarifyingState] Selected tool '%s' with argument_names=%s",
                 tool_name,
-                tool_args,
+                sorted(str(name) for name in tool_args),
             )
             engine.preferences["tool_name"] = tool_name
             engine.preferences["tool_args"] = tool_args

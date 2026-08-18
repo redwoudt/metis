@@ -16,13 +16,23 @@ class SummarizationPrompt(BasePromptTemplate):
 
     def __init__(self, context: str, tool_output: str = "", tone: str = "Neutral", persona: str = "Concise Assistant"):
         super().__init__(tone, persona, context, tool_output)
-        logger.debug(f"Initializing SummarizationPrompt with tone='{tone}', persona='{persona}', context='{context[:30]}...'")
+        logger.debug(
+            "Initializing SummarizationPrompt tone_length=%d persona_length=%d "
+            "context_length=%d",
+            len(tone or ""),
+            len(persona or ""),
+            len(context or ""),
+        )
 
     def set_tone(self):
         # Set the tone and speaking persona for the assistant
         self.prompt.tone = self.tone
         self.prompt.persona = self.persona
-        logger.debug(f"Setting tone='{self.tone}' and persona='{self.persona}'")
+        logger.debug(
+            "Setting tone_length=%d persona_length=%d",
+            len(self.tone or ""),
+            len(self.persona or ""),
+        )
 
     def add_task_instruction(self):
         # Instruct the model to perform a summarization task
