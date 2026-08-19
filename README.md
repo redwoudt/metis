@@ -166,6 +166,21 @@ python -m metis.examples.chapter8_governed_tools --city Ithaca
 python -m metis.examples.chapter8_governed_tools --city Ithaca --deny
 ```
 
+### Try the Chapter 9 Adaptive Response Example
+
+Chapter 9 demonstrates how Strategy controls model-invocation parameters while
+Decorator controls optional response presentation. The example uses a
+deterministic recording model, so it requires no API key or network access:
+
+```sh
+python -m metis.examples.chapter9_adaptive_responses --style concise
+
+python -m metis.examples.chapter9_adaptive_responses \
+  --style analytical \
+  --format-markdown \
+  --include-citations
+```
+  
 ### Try the Chapter 17 Plugin Host
 
 Mêtis discovers separately installed capabilities through the
