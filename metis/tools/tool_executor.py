@@ -55,13 +55,19 @@ class ToolExecutor:
             services=services,
         )
 
-        if tool_name in {"execute_sql", "schedule_task"} and services is not None:
+        execution_policy = getattr(command, "execution_policy", "light")
+        if execution_policy == "strict":
             pipeline = build_strict_pipeline(
                 services.quota,
                 services.audit_logger,
             )
-        else:
+        elif execution_policy == "light":
             pipeline = build_light_pipeline()
+        else:
+            raise ToolExecutionError(
+                f"Unsupported execution policy '{execution_policy}' "
+                f"for tool '{tool_name}'"
+            )
 
         return pipeline.handle(context).result
 

@@ -20,6 +20,7 @@ class ScheduleTaskCommand(ToolCommand):
     """
 
     name = "schedule_task"
+    execution_policy = "strict"
 
     def execute(self, context: ToolContext) -> Any:
         """

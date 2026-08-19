@@ -155,6 +155,17 @@ To check the current test coverage run:
 
 make coverage
 
+### Try the Chapter 8 Governed Weather Tool
+
+Chapter 8 registers a deterministic weather command and executes it through
+the same strict validation, permission, quota, audit, and execution pipeline
+used by sensitive application tools:
+
+```sh
+python -m metis.examples.chapter8_governed_tools --city Ithaca
+python -m metis.examples.chapter8_governed_tools --city Ithaca --deny
+```
+
 ### Try the Chapter 17 Plugin Host
 
 Mêtis discovers separately installed capabilities through the
