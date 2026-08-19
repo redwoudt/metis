@@ -36,6 +36,7 @@ class ToolCommand(ABC):
     """
 
     name: str  # must be set by subclasses
+    execution_policy: str = "light"  # supported values: "light" or "strict"
 
     @abstractmethod
     def execute(self, context: ToolContext) -> Any:
