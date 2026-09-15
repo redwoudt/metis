@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, List
 from uuid import uuid4
@@ -24,6 +24,13 @@ class TaskStatus:
     FAILED = "failed"
     RETRYING = "retrying"
     ABANDONED = "abandoned"
+
+
+def _as_utc(value: datetime, *, field_name: str) -> datetime:
+    """Require a timezone-aware datetime and normalize it to UTC."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be timezone-aware.")
+    return value.astimezone(timezone.utc)
 
 
 @dataclass
@@ -56,6 +63,12 @@ class BackgroundCommand:
     last_error: str | None = None
     result: Any = None
     payload: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.scheduled_for = _as_utc(
+            self.scheduled_for,
+            field_name="scheduled_for",
+        )
 
     def execute(self, context: Any = None) -> Any:
         """
@@ -114,7 +127,7 @@ class InMemoryTaskScheduler(TaskScheduler):
         return command
 
     def next_due_tasks(self, now: datetime | None = None) -> List[BackgroundCommand]:
-        now = now or self.clock.now()
+        now = _as_utc(now or self.clock.now(), field_name="now")
         return [
             task
             for task in self._tasks.values()
@@ -253,7 +266,7 @@ class SQLiteTaskScheduler(TaskScheduler):
         return [self._from_row(row) for row in rows]
 
     def next_due_tasks(self, now: datetime | None = None) -> List[BackgroundCommand]:
-        now = now or self.clock.now()
+        now = _as_utc(now or self.clock.now(), field_name="now")
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -270,8 +283,10 @@ def parse_schedule_time(value: Any, now: datetime) -> datetime:
     """
     Best-effort parser for human-friendly schedule input.
     """
+    now = _as_utc(now, field_name="now")
+
     if isinstance(value, datetime):
-        return value
+        return _as_utc(value, field_name="time")
 
     if value is None:
         raise ValueError("Schedule task requires 'time'.")
@@ -301,7 +316,8 @@ def parse_schedule_time(value: Any, now: datetime) -> datetime:
         return now + timedelta(days=amount)
 
     try:
-        return datetime.fromisoformat(str(value))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return _as_utc(parsed, field_name="time")
     except ValueError as exc:
         raise ValueError(
             "Unsupported time format. Use a datetime, ISO string, 'tomorrow', or 'in N minutes'."

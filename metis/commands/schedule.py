@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from .base import ToolCommand, ToolContext
-from metis.scheduling.scheduler import BackgroundCommand, TaskStatus, parse_schedule_time
+from metis.scheduling.scheduler import (
+    BackgroundCommand,
+    TaskStatus,
+    parse_schedule_time,
+)
 
 
 class ScheduleTaskCommand(ToolCommand):
@@ -52,13 +56,16 @@ class ScheduleTaskCommand(ToolCommand):
         # These services are provided by the system services container and allow
         # commands to interact with scheduling, time, logging, etc.
         services = context.services
-        scheduler = getattr(services, "scheduler", None) if services is not None else None
+        scheduler = (
+            getattr(services, "scheduler", None) if services is not None else None
+        )
         clock = getattr(services, "clock", None) if services is not None else None
 
         if scheduler is None or clock is None:
             raise ValueError("Schedule task requires a scheduler service and clock.")
 
         now = clock.now()
+        metadata = context.metadata or {}
 
         # Convert the provided time value into a concrete datetime.
         # This supports several human‑friendly formats such as:
@@ -72,7 +79,16 @@ class ScheduleTaskCommand(ToolCommand):
         # 1. A deferred tool command executed later through the normal tool pipeline.
         # 2. A generic background task that simply carries structured payload data.
         tool_name = context.args.get("tool_name")
-        task_args = context.args.get("task_args", {})
+        task_args = context.args.get("task_args") or {}
+        if not isinstance(task_args, dict):
+            raise ValueError("Schedule task requires 'task_args' to be a mapping.")
+
+        correlation_id = metadata.get("correlation_id") or context.args.get(
+            "correlation_id"
+        )
+        supplied_idempotency_key = metadata.get("idempotency_key") or context.args.get(
+            "idempotency_key"
+        )
 
         if tool_name:
             task_type = "tool_command"
@@ -80,14 +96,23 @@ class ScheduleTaskCommand(ToolCommand):
                 "tool_name": tool_name,
                 "args": task_args,
                 "user": context.user,
-                "correlation_id": context.metadata.get("correlation_id"),
+                "correlation_id": correlation_id,
             }
         else:
             task_type = "generic"
             payload = {
                 k: v
                 for k, v in context.args.items()
-                if k not in {"time", "description", "tool_name", "task_args"}
+                if k
+                not in {
+                    "time",
+                    "description",
+                    "tool_name",
+                    "task_args",
+                    "max_retries",
+                    "correlation_id",
+                    "idempotency_key",
+                }
             }
 
         # Create the durable task object that will be executed later
@@ -101,12 +126,14 @@ class ScheduleTaskCommand(ToolCommand):
             payload=payload,
         )
 
-        # Retried side effects need a stable identity.  Downstream command
+        # Keep every lifecycle event for this task on one stable correlation
+        # identity, even when the original request did not supply one.
+        task.payload["correlation_id"] = correlation_id or task.id
+
+        # Retried side effects need a stable identity. Downstream command
         # implementations can pass this key to the external system they call.
         if task_type == "tool_command":
-            task.payload["idempotency_key"] = (
-                context.args.get("idempotency_key") or task.id
-            )
+            task.payload["idempotency_key"] = supplied_idempotency_key or task.id
 
         # Persist the task into the scheduler.
         scheduler.schedule(task)

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
-
 from metis.events import (
     Event,
     EventPublisher,
@@ -63,7 +61,7 @@ class Worker:
         if isinstance(task.payload, dict):
             correlation_id = task.payload.get("correlation_id")
         if not correlation_id:
-            correlation_id = str(uuid4())
+            correlation_id = task.id
 
         payload = {
             "task_id": task.id,

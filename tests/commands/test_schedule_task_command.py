@@ -65,3 +65,59 @@ def test_schedule_task_requires_time():
 
     with pytest.raises(ValueError):
         cmd.execute(ctx)
+
+
+def test_scheduled_tool_preserves_request_and_effect_identities():
+    clock = TestClock(datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc))
+    scheduler = InMemoryTaskScheduler(clock=clock)
+    services = Services(clock=clock, scheduler=scheduler)
+    command = ScheduleTaskCommand()
+
+    result = command.execute(
+        ToolContext(
+            command=command,
+            user="user_1",
+            args={
+                "description": "Search later",
+                "time": "in 10 minutes",
+                "tool_name": "search_web",
+                "task_args": {"query": "Penelope"},
+            },
+            metadata={
+                "correlation_id": "request-10",
+                "idempotency_key": "effect-10",
+            },
+            services=services,
+        )
+    )
+
+    task = scheduler.get(result["task_id"])
+    assert task is not None
+    assert task.payload["correlation_id"] == "request-10"
+    assert task.payload["idempotency_key"] == "effect-10"
+
+
+def test_scheduled_tool_uses_task_id_when_no_identity_is_supplied():
+    clock = TestClock(datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc))
+    scheduler = InMemoryTaskScheduler(clock=clock)
+    services = Services(clock=clock, scheduler=scheduler)
+    command = ScheduleTaskCommand()
+
+    result = command.execute(
+        ToolContext(
+            command=command,
+            user="user_1",
+            args={
+                "description": "Search later",
+                "time": "in 10 minutes",
+                "tool_name": "search_web",
+                "task_args": {"query": "Odysseus"},
+            },
+            services=services,
+        )
+    )
+
+    task = scheduler.get(result["task_id"])
+    assert task is not None
+    assert task.payload["correlation_id"] == task.id
+    assert task.payload["idempotency_key"] == task.id
