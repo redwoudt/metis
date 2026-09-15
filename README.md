@@ -180,6 +180,16 @@ python -m metis.examples.chapter9_adaptive_responses \
   --format-markdown \
   --include-citations
 ```
+
+### Try the Chapter 10 Background Task Example
+
+Chapter 10 schedules one provider-free task, verifies that it is not yet due,
+advances an injected clock, and lets a worker complete it without sleeping or
+creating a database file:
+
+```sh
+python -m metis.examples.chapter10_background_tasks --delay-minutes 5
+```
   
 ### Try the Chapter 17 Plugin Host
 

@@ -1,9 +1,16 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from metis.commands.schedule import ScheduleTaskCommand
 from metis.commands.base import ToolContext
 from metis.scheduling.clock import TestClock
-from metis.scheduling.scheduler import InMemoryTaskScheduler, TaskStatus
+from metis.scheduling.scheduler import (
+    BackgroundCommand,
+    InMemoryTaskScheduler,
+    TaskStatus,
+    parse_schedule_time,
+)
 
 
 class Services:
@@ -48,3 +55,20 @@ def test_schedule_task_creates_background_task():
     assert task is not None
     assert task.description == "Generate summary"
     assert task.created_by == "user_123"
+
+
+def test_parse_schedule_time_normalizes_iso_timestamp_to_utc():
+    now = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)
+
+    parsed = parse_schedule_time("2026-01-01T12:00:00+02:00", now)
+
+    assert parsed == datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+    assert parsed.utcoffset() == timedelta(0)
+
+
+def test_background_command_rejects_naive_scheduled_time():
+    with pytest.raises(ValueError, match="scheduled_for must be timezone-aware"):
+        BackgroundCommand(
+            description="Ambiguous local time",
+            scheduled_for=datetime(2026, 1, 1, 9, 0),
+        )

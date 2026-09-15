@@ -72,3 +72,27 @@ def test_worker_retries_failed_task():
     assert saved.retries == 1
     assert saved.last_error == "temporary failure"
     assert saved.scheduled_for == clock.now() + timedelta(minutes=5)
+
+
+def test_worker_abandons_task_after_retry_budget_is_exhausted():
+    class FailingTask(BackgroundCommand):
+        def execute(self, context=None):
+            raise RuntimeError("permanent failure")
+
+    clock = TestClock(datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc))
+    scheduler = InMemoryTaskScheduler(clock=clock)
+    worker = Worker(scheduler=scheduler, clock=clock)
+    task = FailingTask(
+        description="Stop retrying",
+        scheduled_for=clock.now(),
+        max_retries=0,
+    )
+    scheduler.schedule(task)
+
+    worker.run_once()
+
+    saved = scheduler.get(task.id)
+    assert saved is not None
+    assert saved.status == TaskStatus.ABANDONED
+    assert saved.retries == 1
+    assert saved.last_error == "permanent failure"
