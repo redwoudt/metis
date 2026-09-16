@@ -155,6 +155,18 @@ To check the current test coverage run:
 
 make coverage
 
+### Try the Chapter 3 State and Memento Example
+
+Chapter 3 advances a conversation from `GreetingState` to
+`ClarifyingState`, then restores the earlier state and history from a scoped
+checkpoint. The example uses a deterministic mock model and temporary
+storage, so it requires no API key or network access:
+
+```sh
+python -m metis.examples.chapter3_state_memento \
+  --prompt "Plan a careful route home"
+```
+
 ### Try the Chapter 8 Governed Weather Tool
 
 Chapter 8 registers a deterministic weather command and executes it through
