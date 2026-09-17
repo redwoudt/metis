@@ -35,6 +35,12 @@ def lex(text: str) -> List[Token]:
             start_line, start_col = line, col
             j = i
             while j < len(text) and text[j] != "]":
+                if text[j] == "[":
+                    raise LexError(
+                        "Unexpected '[' inside DSL value",
+                        line,
+                        col + (j - i),
+                    )
                 j += 1
             raw = text[i:j]
             value = raw.strip()

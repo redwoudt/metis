@@ -192,6 +192,27 @@ python -m metis.examples.chapter4_prompt_construction \
 Both commands end with `MATCH=True` when the two construction paths produce
 the same prompt.
 
+### Try the Chapter 5 Prompt DSL Example
+
+Chapter 5 sends a controlled prompt language through the lexer, parser,
+expression objects, validator, and Chapter 4 prompt builder. The command is
+deterministic and requires no API key or model provider:
+
+```sh
+python -m metis.cli.main dsl \
+  --input "[persona: Research Assistant][task: Summarize][length: 3 bullet points]" \
+  --show-stages
+```
+
+The JSON output names the tokens and expression classes, shows the validated
+context, and displays the constructed prompt. To see semantic validation fail
+before prompt construction, run:
+
+```sh
+python -m metis.cli.main dsl \
+  --input "[task: translate][length: 3 bullet points]"
+```
+
 ### Try the Chapter 8 Governed Weather Tool
 
 Chapter 8 registers a deterministic weather command and executes it through

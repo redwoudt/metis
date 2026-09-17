@@ -1,49 +1,8 @@
 from typing import List
 from .tokens import Token, TokenType
 from .errors import ParseError, UnknownKeyError
-from .ast import (
-    Expression,
-    PersonaExpr,
-    TaskExpr,
-    LengthExpr,
-    FormatExpr,
-    ToneExpr,
-    SourceExpr,
-    StyleExpr,
-    BehaviorExpr,
-    SafetyEnabledExpr,
-    FormatMarkdownExpr,
-    IncludeCitationsExpr,
-    ToolExpr,
-    ArgsExpr,
-    ToolCallExpr,
-)
-
-
-KEY_TO_EXPR = {
-    "persona": PersonaExpr,
-    "task": TaskExpr,
-    "length": LengthExpr,
-    "format": FormatExpr,
-    "tone": ToneExpr,
-    "source": SourceExpr,
-
-    # Response style selection
-    "style": StyleExpr,
-
-    # System behavior template selection (Chapter 16)
-    "behavior": BehaviorExpr,
-
-    # Response rendering preferences
-    "safety_enabled": SafetyEnabledExpr,
-    "format_markdown": FormatMarkdownExpr,
-    "include_citations": IncludeCitationsExpr,
-
-    # Tool execution (Chapter 8)
-    "tool": ToolExpr,
-    "args": ArgsExpr,
-    "tool_call": ToolCallExpr,
-}
+from .ast import Expression
+from .registry import resolve_key
 
 
 class Parser:
@@ -54,10 +13,14 @@ class Parser:
     def parse(self) -> List[Expression]:
         exprs: List[Expression] = []
         while not self._is_at_end():
-            if self._check(TokenType.LBRACK):
-                exprs.append(self._expression())
-            else:
-                self._advance()
+            if not self._check(TokenType.LBRACK):
+                tok = self._peek()
+                raise ParseError(
+                    "Expected '[' to start DSL expression.",
+                    tok.line,
+                    tok.col,
+                )
+            exprs.append(self._expression())
         return exprs
 
     def _expression(self) -> Expression:
@@ -70,22 +33,19 @@ class Parser:
         key = (key_tok.lexeme or "").strip().lower()
         raw_value = (val_tok.lexeme or "").strip()
 
-        expr_cls = KEY_TO_EXPR.get(key)
+        expr_cls = resolve_key(key)
         if not expr_cls:
             raise UnknownKeyError(key)
 
-        # ArgsExpr / ToolCallExpr want raw string, others want a value string
-        if expr_cls in (ArgsExpr, ToolCallExpr):
-            return expr_cls(raw_value)  # type: ignore[misc]
         return expr_cls(raw_value)  # type: ignore[misc]
 
-    def _consume(self, ttype: str, message: str) -> Token:
+    def _consume(self, ttype: TokenType, message: str) -> Token:
         if self._check(ttype):
             return self._advance()
         tok = self._peek()
         raise ParseError(message, tok.line, tok.col)
 
-    def _check(self, ttype: str) -> bool:
+    def _check(self, ttype: TokenType) -> bool:
         if self._is_at_end():
             return False
         return self._peek().type == ttype

@@ -18,15 +18,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
-from typing import Dict
+from typing import Any, Dict
 
 from metis.cli.tasks import handle_tasks_list, handle_tasks_show
 from metis.cli.worker import handle_worker_run
 from metis.components.model_manager import ModelManager
 from metis.conversation_engine import ConversationEngine
+from metis.dsl import DslError, interpret_prompt_dsl
+from metis.dsl.lexer import lex
+from metis.dsl.parser import Parser
 from metis.models.model_factory import ModelFactory
+from metis.prompts.builders.default_prompt_builder import DefaultPromptBuilder
 
 
 # --------------------------------------------------------------------------- #
@@ -79,34 +82,18 @@ def _engine_from_env() -> ConversationEngine:
 
 
 # --------------------------------------------------------------------------- #
-# Minimal DSL parsing
+# Prompt DSL
 # --------------------------------------------------------------------------- #
 
 
-_DSL_PAIR = re.compile(r"\[([A-Za-z0-9_\-]+)\s*:\s*([^\]]+)\]")
+def parse_bracket_dsl(dsl_text: str) -> Dict[str, Any]:
+    """Compatibility wrapper around the package's canonical interpreter."""
+    return dict(interpret_prompt_dsl(dsl_text))
 
 
-def parse_bracket_dsl(dsl_text: str) -> Dict[str, str]:
-    """
-    Parse a tiny DSL of the form:
-        [key: value][another_key: another value]
-
-    Returns a flat dict like:
-        {"key": "value", "another_key": "another value"}
-
-    The parser is intentionally forgiving and ignores malformed chunks.
-    """
-    out: Dict[str, str] = {}
-    if not dsl_text:
-        return out
-
-    for k, v in _DSL_PAIR.findall(dsl_text):
-        k = (k or "").strip()
-        v = (v or "").strip()
-        if k:
-            out[k] = v
-
-    return out
+def _report_dsl_error(exc: DslError) -> int:
+    print(f"Error: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 2
 
 
 # --------------------------------------------------------------------------- #
@@ -121,10 +108,12 @@ def handle_prompt(args: argparse.Namespace) -> int:
     The command echoes the original input and then prints the model response.
     This keeps the CLI both human-friendly and stable for tests.
     """
-    engine = _engine_from_env()
+    try:
+        dsl_ctx = parse_bracket_dsl(getattr(args, "dsl", "") or "")
+    except DslError as exc:
+        return _report_dsl_error(exc)
 
-    # Optional DSL context.
-    dsl_ctx = parse_bracket_dsl(getattr(args, "dsl", "") or "")
+    engine = _engine_from_env()
     context = getattr(args, "context", "") or ""
 
     # Compose a deterministic prompt so tests can assert on stable output.
@@ -148,8 +137,25 @@ def handle_dsl(args: argparse.Namespace) -> int:
     Example output:
       {"persona":"Research Assistant","task":"Summarize","length":"3 bullet points"}
     """
-    parsed = parse_bracket_dsl(args.input)
-    print(json.dumps(parsed, ensure_ascii=False))
+    try:
+        parsed = parse_bracket_dsl(args.input)
+        if not args.show_stages:
+            print(json.dumps(parsed, ensure_ascii=False))
+            return 0
+
+        tokens = lex(args.input)
+        expressions = Parser(tokens).parse()
+        prompt = DefaultPromptBuilder().build_with_context(parsed).render()
+        result = {
+            "source": args.input,
+            "tokens": [token.type.name for token in tokens],
+            "expressions": [type(expression).__name__ for expression in expressions],
+            "context": parsed,
+            "prompt": prompt,
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    except DslError as exc:
+        return _report_dsl_error(exc)
     return 0
 
 
@@ -176,6 +182,11 @@ def build_parser() -> argparse.ArgumentParser:
     # dsl
     p_dsl = sub.add_parser("dsl", help="Parse a bracket DSL and output JSON")
     p_dsl.add_argument("--input", required=True, help="Bracket DSL like: [task: Summarize][length: short]")
+    p_dsl.add_argument(
+        "--show-stages",
+        action="store_true",
+        help="Show tokens, expression classes, context, and the built prompt",
+    )
     p_dsl.set_defaults(func=handle_dsl)
 
     # worker

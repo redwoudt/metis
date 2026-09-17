@@ -9,7 +9,9 @@ This grammar is intentionally minimal to keep the Interpreter
 Pattern focused and easy to reason about.
 """
 
-from typing import Final, Set
+from typing import Final
+
+from .registry import KNOWN_KEYS
 
 EBNF: Final[str] = """
 prompt      ::= expression*
@@ -18,30 +20,5 @@ key         ::= IDENT
 value       ::= VALUE
 """
 
-# Canonical keys supported by the DSL.
-# These are interpreted into a structured context dictionary.
-KNOWN_KEYS: Set[str] = {
-    # Prompt shaping
-    "persona",
-    "task",
-    "length",
-    "format",
-    "tone",
-    "source",
-
-    # Response style selection
-    "style",
-
-    # System behavior template selection (Chapter 16)
-    "behavior",
-
-    # Response rendering preferences
-    "safety_enabled",
-    "format_markdown",
-    "include_citations",
-
-    # Tool execution (Chapter 8)
-    "tool",
-    "args",
-    "tool_call",
-}
+# KNOWN_KEYS is imported from registry.py so the grammar, parser, and
+# extension mechanism share one live source of truth.
