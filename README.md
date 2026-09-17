@@ -167,6 +167,31 @@ python -m metis.examples.chapter3_state_memento \
   --prompt "Plan a careful route home"
 ```
 
+### Try the Chapter 4 Prompt Construction Example
+
+Chapter 4 builds the same planning prompt with `DefaultPromptBuilder` and
+`PlanningPrompt`, then compares their rendered output before any model call.
+The example is deterministic and requires no API key or network access:
+
+```sh
+python -m metis.examples.chapter4_prompt_construction
+```
+
+To see how both paths handle an optional component, run the comparison with an
+empty tool result:
+
+```sh
+python -m metis.examples.chapter4_prompt_construction \
+  --input "Plan a three-day study sprint." \
+  --context "The exam is next Monday." \
+  --tool-output "" \
+  --tone "Direct" \
+  --persona "Study Coach"
+```
+
+Both commands end with `MATCH=True` when the two construction paths produce
+the same prompt.
+
 ### Try the Chapter 8 Governed Weather Tool
 
 Chapter 8 registers a deterministic weather command and executes it through
