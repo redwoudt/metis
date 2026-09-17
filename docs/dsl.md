@@ -79,13 +79,15 @@ balanced behavior baseline is active.
 
 - **Length** is only valid if `task` is `summarize` or `summary`.
 - **Source** must be a valid `http://` or `https://` URL.
-- Unknown keys will raise an error unless registered via the DSL registry.
+- Unknown keys raise an error unless they have been registered with the DSL
+  registry. The parser consults that registry directly.
 
 ## Extensibility
 
 New keys can be added dynamically using the registry:
 
 ```python
+from metis.dsl import interpret_prompt_dsl
 from metis.dsl.registry import register_key
 from metis.dsl.ast import Expression
 
@@ -97,13 +99,17 @@ class AudienceExpr(Expression):
         context["audience"] = self.value
 
 register_key("audience", AudienceExpr)
+
+assert interpret_prompt_dsl("[audience: researchers]")["audience"] == "researchers"
 ```
 
 ## Workflow in Metis
 
 1. **Lexing** — The `lexer.py` module scans the DSL string into tokens.
-2. **Parsing** — The `parser.py` module builds an AST of `Expression` objects.
-3. **Interpreting** — The `interpreter.py` walks the AST, filling a `PromptContext` dictionary.
+2. **Parsing** — The `parser.py` module creates an ordered list of `Expression`
+   objects selected through the registry.
+3. **Interpreting** — The `interpreter.py` walks that list, filling a
+   `PromptContext` dictionary.
 4. **Validation** — `validators.py` ensures semantic rules are met.
 5. **Prompt Building** — Builders (e.g., `DefaultPromptBuilder`, `OpenAIPromptBuilder`) map the context into final prompt formats.
 6. **Execution** — The request handler sends the built prompt to the selected model.
@@ -112,12 +118,12 @@ register_key("audience", AudienceExpr)
 
 Interpret a DSL string directly:
 ```
-python metis_cli.py dsl --input "[persona: Analyst][task: summarize][length: short]"
+python -m metis.cli.main dsl --input "[persona: Analyst][task: summarize][length: short]"
 ```
 
 Use DSL with the prompt command:
 ```
-python metis_cli.py prompt --input "Summarize the report" --dsl "[persona: Analyst][tone: friendly][task: summarize]"
+python -m metis.cli.main prompt --type summarize --input "Summarize the report" --dsl "[persona: Analyst][tone: friendly][task: summarize]"
 ```
 
 ## Error Handling

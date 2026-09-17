@@ -54,6 +54,11 @@ def test_unexpected_character_raises():
         lex(bad_text)
 
 
+def test_nested_opening_bracket_in_value_raises():
+    with pytest.raises(LexError):
+        lex("[task: [nested]]")
+
+
 def test_eof_always_present():
     text = "[persona: Analyst]"
     tokens = lex(text)

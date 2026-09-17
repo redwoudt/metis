@@ -1,3 +1,6 @@
+import pytest
+
+from metis.dsl import ParseError
 from metis.mediator import ConversationMediator, RequestContext
 
 
@@ -33,3 +36,36 @@ def test_prepare_context_preserves_save_and_undo_flags():
 
     assert ctx.save is True
     assert ctx.undo is True
+
+
+class DslSession:
+    persona = ""
+    tone = ""
+
+
+def test_parse_dsl_uses_the_same_strict_interpreter_as_the_cli():
+    mediator = ConversationMediator(session_manager=DummySessionManager())
+    ctx = RequestContext(
+        user_id="user1",
+        user_input=(
+            "[persona: Research Assistant][task: Summarize] Summarize this."
+        ),
+        session=DslSession(),
+    )
+
+    mediator.parse_dsl(ctx)
+
+    assert ctx.dsl_context["persona"] == "Research Assistant"
+    assert ctx.clean_input == "Summarize this."
+
+
+def test_parse_dsl_rejects_malformed_leading_dsl():
+    mediator = ConversationMediator(session_manager=DummySessionManager())
+    ctx = RequestContext(
+        user_id="user1",
+        user_input="[task summarize] Summarize this.",
+        session=DslSession(),
+    )
+
+    with pytest.raises(ParseError):
+        mediator.parse_dsl(ctx)

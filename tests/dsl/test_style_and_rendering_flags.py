@@ -1,22 +1,16 @@
 import pytest
 
-from metis.dsl.lexer import Lexer
-from metis.dsl.parser import Parser
+from metis.dsl import split_prompt_dsl
 
 
 def _interpret(dsl_text: str) -> dict:
     """
-    Parse DSL and interpret expressions into a context dict.
+    Interpret a leading DSL prefix into a context dict.
 
-    This mirrors how RequestHandler builds dsl_ctx.
+    This mirrors how the request mediator handles DSL plus free-form input.
     """
-    tokens = Lexer(dsl_text).tokenize()
-    ast = Parser(tokens).parse()
-
-    ctx: dict = {}
-    for expr in ast:
-        expr.interpret(ctx)
-    return ctx
+    ctx, _ = split_prompt_dsl(dsl_text)
+    return dict(ctx)
 
 
 def test_dsl_style_expr_sets_style_in_context():

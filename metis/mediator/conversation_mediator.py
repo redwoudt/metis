@@ -1,10 +1,9 @@
 import logging
-import re
 from typing import Any
 
 from metis.components.model_manager import ModelManager
 from metis.config import Config
-from metis.dsl import interpret_prompt_dsl
+from metis.dsl import split_prompt_dsl
 from metis.events import Event, content_summary, exception_summary
 from metis.models.model_factory import ModelFactory
 
@@ -209,34 +208,14 @@ class ConversationMediator:
         context.engine = getattr(session, "engine", None)
 
     def parse_dsl(self, context: RequestContext) -> None:
-        try:
-            blocks = re.findall(
-                r"\[[^\[\]:]+:[^\[\]]+?\]",
-                context.user_input or "",
-            )
-            if not blocks:
-                context.dsl_context = {}
-                context.clean_input = context.user_input
-                return
+        dsl_ctx, clean_input = split_prompt_dsl(context.user_input or "")
+        context.dsl_context = dict(dsl_ctx)
+        context.clean_input = clean_input
 
-            dsl_ctx = interpret_prompt_dsl("".join(blocks))
-            context.dsl_context = dict(dsl_ctx)
-
-            context.clean_input = re.sub(
-                r"\[[^\[\]:]+:[^\[\]]+?\]",
-                "",
-                context.user_input or "",
-            ).strip()
-
-            if context.dsl_context.get("persona"):
-                context.session.persona = context.dsl_context["persona"]
-            if context.dsl_context.get("tone"):
-                context.session.tone = context.dsl_context["tone"]
-
-        except Exception:
-            logger.exception("[ConversationMediator] DSL parse error")
-            context.dsl_context = {}
-            context.clean_input = context.user_input
+        if context.dsl_context.get("persona"):
+            context.session.persona = context.dsl_context["persona"]
+        if context.dsl_context.get("tone"):
+            context.session.tone = context.dsl_context["tone"]
 
     def select_tool(self, context: RequestContext) -> None:
         dsl_ctx = context.dsl_context or {}

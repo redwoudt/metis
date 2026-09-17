@@ -13,7 +13,11 @@ class PromptContext(TypedDict, total=False):
     format: str
     tone: str
     source: str
+    style: str
     behavior: str
+    safety_enabled: bool
+    format_markdown: bool
+    include_citations: bool
 
     # Tool execution (Chapter 8)
     tool: str
@@ -69,3 +73,43 @@ def interpret_prompt_dsl(text: str) -> PromptContext:
         raise
 
     return ctx  # type: ignore[return-value]
+
+
+def split_prompt_dsl(text: str) -> tuple[PromptContext, str]:
+    """Interpret leading DSL expressions and return the remaining user text.
+
+    Request entry points use this helper when a prompt begins with one or more
+    ``[key: value]`` expressions followed by free-form input. A leading bracket
+    reserves that prefix for the DSL, so malformed expressions fail rather than
+    being silently treated as ordinary text.
+    """
+    source = text or ""
+    remainder = source.lstrip()
+    if not remainder.startswith("["):
+        return PromptContext(), source
+
+    blocks: list[str] = []
+    consumed = 0
+    while remainder.startswith("["):
+        close = remainder.find("]")
+        if close < 0:
+            # Let the normal lexer/parser produce the source-located error.
+            interpret_prompt_dsl("".join(blocks) + remainder)
+            raise AssertionError("unreachable")
+
+        nested = remainder.find("[", 1, close)
+        if nested >= 0:
+            raise LexError(
+                "Nested '[' is not supported in a DSL value.",
+                1,
+                consumed + nested + 1,
+            )
+
+        blocks.append(remainder[: close + 1])
+        consumed += close + 1
+        remainder = remainder[close + 1 :].lstrip()
+
+    if remainder.startswith("]"):
+        raise ParseError("Unexpected ']'.", 1, consumed + 1)
+
+    return interpret_prompt_dsl("".join(blocks)), remainder

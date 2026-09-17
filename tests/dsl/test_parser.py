@@ -57,3 +57,8 @@ def test_order_preserved_in_expressions():
     # The parser should preserve the input order
     assert isinstance(exprs[0], PersonaExpr)
     assert isinstance(exprs[1], TaskExpr)
+
+
+def test_parser_rejects_text_outside_expressions():
+    with pytest.raises(ParseError):
+        parse_text("[persona: Analyst] trailing")

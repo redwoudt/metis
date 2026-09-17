@@ -2,6 +2,7 @@ import pytest
 
 from metis.dsl import (
     interpret_prompt_dsl,
+    split_prompt_dsl,
     LexError,
     ParseError,
     ValidationError,
@@ -108,3 +109,17 @@ def test_manual_evaluate_walks_expressions():
     assert out is ctx  # evaluate mutates and returns the same dict
     assert ctx["persona"] == "Analyst"
     assert ctx["task"] == "Summarize"
+
+
+def test_split_prompt_dsl_uses_the_canonical_interpreter():
+    ctx, clean_input = split_prompt_dsl(
+        "[persona: Research Assistant][task: Summarize] Summarize this report."
+    )
+
+    assert ctx == {"persona": "Research Assistant", "task": "Summarize"}
+    assert clean_input == "Summarize this report."
+
+
+def test_split_prompt_dsl_rejects_a_malformed_leading_expression():
+    with pytest.raises(ParseError):
+        split_prompt_dsl("[task summarize] Summarize this report.")
