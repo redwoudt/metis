@@ -199,9 +199,7 @@ expression objects, validator, and Chapter 4 prompt builder. The command is
 deterministic and requires no API key or model provider:
 
 ```sh
-python -m metis.cli.main dsl \
-  --input "[persona: Research Assistant][task: Summarize][length: 3 bullet points]" \
-  --show-stages
+python -m metis.examples.chapter5_prompt_dsl
 ```
 
 The JSON output names the tokens and expression classes, shows the validated
@@ -209,9 +207,23 @@ context, and displays the constructed prompt. To see semantic validation fail
 before prompt construction, run:
 
 ```sh
-python -m metis.cli.main dsl \
+python -m metis.examples.chapter5_prompt_dsl \
   --input "[task: translate][length: 3 bullet points]"
 ```
+
+### Try the Chapter 6 Model Management Example
+
+Chapter 6 resolves one model role through a registry-backed Factory, reuses the
+same governed Proxy for equivalent configuration, and creates a distinct Proxy
+when a policy changes. The example uses `MockAdapter`, so it requires no API key
+or network access:
+
+```sh
+python -m metis.examples.chapter6_model_management
+```
+
+The output reports same-configuration reuse, policy-driven separation, two
+deterministic responses, and the named failure for an unsupported vendor.
 
 ### Try the Chapter 8 Governed Weather Tool
 
