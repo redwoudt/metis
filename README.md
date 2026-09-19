@@ -225,6 +225,21 @@ python -m metis.examples.chapter6_model_management
 The output reports same-configuration reuse, policy-driven separation, two
 deterministic responses, and the named failure for an unsupported vendor.
 
+### Try the Chapter 7 Adapter and Bridge Example
+
+Chapter 7 sends one prompt through the public request boundary with the
+deterministic OpenAI and Anthropic teaching adapters. Both providers follow the
+same application call and return plain text, while an unsupported vendor fails
+with a named error. The example requires no API key or network access:
+
+```sh
+python -m metis.examples.chapter7_adapter_bridge
+```
+
+The two response prefixes identify the selected adapter. The reported response
+types remain `str`, showing that provider-specific result dictionaries do not
+escape into application code.
+
 ### Try the Chapter 8 Governed Weather Tool
 
 Chapter 8 registers a deterministic weather command and executes it through
