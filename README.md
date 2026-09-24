@@ -275,7 +275,21 @@ creating a database file:
 ```sh
 python -m metis.examples.chapter10_background_tasks --delay-minutes 5
 ```
-  
+
+### Try the Chapter 11 Event Path Example
+
+Chapter 11 publishes three correlated lifecycle events through the in-process
+`EventBus`. Global and typed observers verify routing, while an intentionally
+failing observer demonstrates that delivery continues to later subscribers.
+The example requires no API key or network access:
+
+```sh
+python -m metis.examples.chapter11_event_path
+```
+
+The stable summary reports the number of published events, the typed
+`prompt.received` count, shared correlation, and continued dispatch.
+
 ### Try the Chapter 17 Plugin Host
 
 Mêtis discovers separately installed capabilities through the
