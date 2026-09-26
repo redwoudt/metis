@@ -290,6 +290,22 @@ python -m metis.examples.chapter11_event_path
 The stable summary reports the number of published events, the typed
 `prompt.received` count, shared correlation, and continued dispatch.
 
+### Try the Chapter 12 Mediated Request Example
+
+Chapter 12 sends one provider-free prompt through `RequestHandler` and
+`ConversationMediator`. The example uses the `Services` composition root, the
+deterministic mock adapter, and temporary session storage to demonstrate DSL
+tone handling, one completion event, and session persistence without an API
+key or network access:
+
+```sh
+python -m metis.examples.chapter12_mediator_workflow
+```
+
+The summary identifies the public entry point and coordinator, then confirms
+that the request returned a response, applied the requested tone, published one
+completion event, and persisted its session.
+
 ### Try the Chapter 17 Plugin Host
 
 Mêtis discovers separately installed capabilities through the
