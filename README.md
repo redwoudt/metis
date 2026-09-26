@@ -12,7 +12,7 @@ sub<a id="readme-top"></a>
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
-[![Unlicense License][license-shield]][license-url]
+[![Apache-2.0 License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
 
@@ -367,7 +367,13 @@ Don't forget to give the project a star! Thanks again!
 <!-- LICENSE -->
 ## License
 
-Creative Commons Attribution-NonCommercial 4.0 International License. See `LICENSE.txt` for more information.
+Except for the project names and branding assets identified in
+[`TRADEMARKS.md`](TRADEMARKS.md), the source code and documentation in this
+repository are licensed under the Apache License 2.0. See [`LICENSE`](LICENSE)
+and [`NOTICE`](NOTICE) for details.
+
+Contributions are submitted under Apache-2.0 as described in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -405,7 +411,7 @@ Project Link: [https://github.com/redwoudt/metis](https://github.com/redwoudt/me
 [issues-shield]: https://img.shields.io/github/issues/redwoudt/metis.svg?style=for-the-badge
 [issues-url]: https://github.com/redwoudt/metis/issues
 [license-shield]: https://img.shields.io/github/license/redwoudt/metis.svg?style=for-the-badge
-[license-url]: https://github.com/redwoudt/metis/blob/master/LICENSE.txt
+[license-url]: https://github.com/redwoudt/metis/blob/main/LICENSE
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/ferdinand-redelinghuys-8a642a10/
 [product-screenshot]: images/mertis_wider_image.png

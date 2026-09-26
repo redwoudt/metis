@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "metis-echo-plugin"
 version = "1.0.0"
 description = "Provider-free example plugin for Mêtis Chapter 17"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
 dependencies = ["metis-genai>=0.1.0"]
 

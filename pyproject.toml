@@ -7,7 +7,8 @@ name = "metis-genai"
 version = "0.1.0"
 description = "A modular GenAI orchestration system using Facade, Strategy, and Policy patterns."
 readme = "README.md"
-license = { text = "CC BY-NC 4.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "TRADEMARKS.md"]
 authors = [
     { name = "Ferdinand Redelinghuys", email = "fcredelinghuys@gmail.com" }
 ]
