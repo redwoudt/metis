@@ -306,6 +306,21 @@ The summary identifies the public entry point and coordinator, then confirms
 that the request returned a response, applied the requested tone, published one
 completion event, and persisted its session.
 
+### Try the Chapter 13 Visitor Inspection Example
+
+Chapter 13 builds one provider-free `ExecutionTrace` from prompt, tool, model,
+and response records. Four focused visitors then reconstruct the request path,
+count tokens, summarize recorded latency, and describe the prompt structure:
+
+```sh
+python -m metis.examples.chapter13_visitor_inspection
+```
+
+The example uses deterministic records, pre-recorded timings, and the local
+`SimpleTokenizer`, so it requires no API key or network access. Its output shows
+that each visitor answers one operational question while traversing the same
+completed request.
+
 ### Try the Chapter 17 Plugin Host
 
 Mêtis discovers separately installed capabilities through the
