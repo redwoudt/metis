@@ -269,11 +269,17 @@ class ConversationMediator:
 
         plan = context.behavior_plan
         task_role = str(dsl_ctx.get("task", "")).strip().lower()
+        explicit_behavior = bool(
+            str(dsl_ctx.get("behavior") or "").strip()
+        )
         registered_roles = getattr(Config, "MODEL_REGISTRY", {})
-        if plan is not None and plan.name != "balanced":
+        if plan is not None and (
+            explicit_behavior or plan.name != "balanced"
+        ):
+            # Apply every field of an explicit plan.
             context.model_role = plan.model_role
         elif task_role and task_role in registered_roles:
-            # Preserve the role-selection contract introduced in Chapter 6.
+            # Preserve the Chapter 6 task role.
             context.model_role = task_role
         elif plan is not None:
             context.model_role = plan.model_role
@@ -402,10 +408,13 @@ class ConversationMediator:
             from metis.response.generation.selector import StrategySelector
 
             selector = StrategySelector()
-            dsl_context = context.dsl_context
+            dsl_context = context.dsl_context or {}
             plan = context.behavior_plan
+            explicit_behavior = bool(
+                str(dsl_context.get("behavior") or "").strip()
+            )
             if plan is not None and (
-                dsl_context.get("behavior") or plan.name != "balanced"
+                explicit_behavior or plan.name != "balanced"
             ):
                 dsl_context = {
                     **dsl_context,

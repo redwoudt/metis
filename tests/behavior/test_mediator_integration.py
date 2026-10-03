@@ -8,6 +8,7 @@ from metis.mediator import ConversationMediator, RequestContext
 from metis.response.generation.strategies import (
     AnalyticalStrategy,
     CreativeStrategy,
+    DefaultStrategy,
 )
 
 
@@ -33,13 +34,38 @@ def make_context(dsl_context: dict[str, Any], plan_name: str) -> RequestContext:
     return context
 
 
-def test_balanced_plan_preserves_chapter_9_style_selection() -> None:
+def test_implicit_balanced_preserves_earlier_role_and_style() -> None:
     mediator = make_mediator()
-    context = make_context({"style": "creative"}, "balanced")
+    mediator.model_resolver = lambda *_: object()
+    context = make_context(
+        {"task": "creative", "style": "creative"},
+        "balanced",
+    )
 
+    mediator.select_model(context)
     mediator.configure_response_strategy(context)
 
+    assert context.model_role == "creative"
     assert isinstance(context.engine.response_strategy, CreativeStrategy)
+
+
+def test_explicit_balanced_applies_plan_role_and_style() -> None:
+    mediator = make_mediator()
+    mediator.model_resolver = lambda *_: object()
+    context = make_context(
+        {
+            "behavior": "balanced",
+            "task": "creative",
+            "style": "creative",
+        },
+        "balanced",
+    )
+
+    mediator.select_model(context)
+    mediator.configure_response_strategy(context)
+
+    assert context.model_role == "analysis"
+    assert isinstance(context.engine.response_strategy, DefaultStrategy)
 
 
 def test_explicit_behavior_template_controls_response_style() -> None:
