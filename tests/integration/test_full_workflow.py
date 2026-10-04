@@ -197,6 +197,37 @@ def test_model_failure_has_one_terminal_truth_without_sensitive_message(
     }
 
 
+def test_session_persistence_failure_has_one_terminal_truth(
+    workflow,
+    monkeypatch,
+):
+    handler, _, _, observer = workflow
+    secret = "session-storage-secret"
+
+    def fail_save(*args, **kwargs):
+        raise OSError(secret)
+
+    monkeypatch.setattr(handler.session_manager, "save", fail_save)
+
+    with pytest.raises(OSError, match=secret):
+        handler.run("persistence-user", "Trigger a persistence failure")
+
+    request_events = [
+        event
+        for event in observer.events
+        if event.metadata.get("user_id") == "persistence-user"
+    ]
+    terminal_events = [
+        event.event_type
+        for event in request_events
+        if event.event_type in {"response.generated", "response.failed"}
+    ]
+
+    assert terminal_events == ["response.failed"]
+    assert secret not in repr([event.payload for event in request_events])
+    assert len({event.correlation_id for event in request_events}) == 1
+
+
 def test_importing_services_has_no_runtime_side_effects(tmp_path):
     project_root = Path(__file__).resolve().parents[2]
     env = dict(os.environ)

@@ -121,8 +121,9 @@ class ConversationMediator:
             context.execution_trace = self.build_execution_trace(context)
             self.last_execution_trace = context.execution_trace
 
-            self.publish_response_generated(context)
+            # Persist before publishing terminal success.
             self.persist_session(context)
+            self.publish_response_generated(context)
             return RequestResult(
                 response=context.response,
                 correlation_id=context.correlation_id,
