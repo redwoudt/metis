@@ -8,6 +8,9 @@ links.
 
 ## Diagram index
 
+- [Chapter 1 request journey](chapter-01/request-journey.md) — the compact
+  request path used in the opening chapter, with runtime collaborators and
+  evidence services grouped for readability.
 - [Chapter 2 request lifecycle](chapter-02/request-lifecycle.md) — the detailed
   path from `RequestHandler` through `ConversationMediator` and its runtime
   collaborators.
@@ -31,4 +34,3 @@ links.
 Repository documentation should use relative links. Published material should
 use a GitHub permalink pinned to the commit or release that the text describes,
 not a link to a moving branch such as `main`.
-
