@@ -24,6 +24,10 @@ links.
 - [Chapter 8 governed tool execution](chapter-08/tool-execution-lifecycle.md)
   expands the printed sequence into allow-listed lookup, policy selection,
   handler-chain outcomes, lifecycle events, and result recording.
+- [Chapter 9 adaptive response runtime](chapter-09/adaptive-response-runtime.md)
+  contains the compact book sequence and detailed component-level path through
+  Strategy selection, model generation, and deterministic Decorator
+  composition.
 - [Chapter 18 full workflow](../full_workflow.md)
   shows the end-to-end workflow that brings the book's patterns together.
 
