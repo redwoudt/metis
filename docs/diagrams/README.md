@@ -17,6 +17,9 @@ links.
 - [Chapter 5 prompt DSL runtime](chapter-05/prompt-dsl-runtime.md) — the compact
   book sequence and detailed component-level path through lexing, parsing,
   expression evaluation, semantic validation, and prompt construction.
+- [Chapter 6 model-management runtime](chapter-06/model-management-runtime.md)
+  shows first-use client creation, same-key reuse, and governed generation
+  through `ModelFactory`, the reuse cache, and `ModelProxy`.
 - [Chapter 18 full workflow](../full_workflow.md) — the end-to-end workflow that
   brings the book's patterns together.
 
