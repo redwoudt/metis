@@ -36,6 +36,9 @@ links.
   contains the compact book sequence and a detailed save-and-restore flow,
   including artifact pinning, persistence, release, and missing-artifact
   failure behavior.
+- [Chapter 15 null publisher lifecycle](chapter-15/null-publisher-lifecycle.md)
+  expands the compact model-request sequence into publisher normalization,
+  real and null delivery behavior, and the success and failure paths.
 - [Chapter 18 full workflow](../full_workflow.md)
   shows the end-to-end workflow that brings the book's patterns together.
 
