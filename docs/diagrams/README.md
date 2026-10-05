@@ -28,6 +28,10 @@ links.
   contains the compact book sequence and detailed component-level path through
   Strategy selection, model generation, and deterministic Decorator
   composition.
+- [Chapter 12 mediated request lifecycle](chapter-12/mediator-request-lifecycle.md)
+  expands the compact success and policy-denial sequence into the complete
+  mediated lifecycle, including events, request planning, execution,
+  persistence, and failure propagation.
 - [Chapter 18 full workflow](../full_workflow.md)
   shows the end-to-end workflow that brings the book's patterns together.
 
