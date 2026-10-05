@@ -32,6 +32,10 @@ links.
   expands the compact success and policy-denial sequence into the complete
   mediated lifecycle, including events, request planning, execution,
   persistence, and failure propagation.
+- [Chapter 14 memory checkpoint lifecycle](chapter-14/memory-checkpoint-lifecycle.md)
+  contains the compact book sequence and a detailed save-and-restore flow,
+  including artifact pinning, persistence, release, and missing-artifact
+  failure behavior.
 - [Chapter 18 full workflow](../full_workflow.md)
   shows the end-to-end workflow that brings the book's patterns together.
 
