@@ -28,6 +28,10 @@ links.
   contains the compact book sequence and detailed component-level path through
   Strategy selection, model generation, and deterministic Decorator
   composition.
+- [Chapter 10 background-task lifecycle](chapter-10/background-task-lifecycle.md)
+  contains the compact book sequence and detailed component-level path through
+  task creation, persistence, later worker execution, governed deferred tool
+  execution, lifecycle events, retries, and abandonment.
 - [Chapter 12 mediated request lifecycle](chapter-12/mediator-request-lifecycle.md)
   expands the compact success and policy-denial sequence into the complete
   mediated lifecycle, including events, request planning, execution,
