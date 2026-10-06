@@ -199,6 +199,7 @@ worker described in Chapter 10.
 - [`test_background_scheduler.py`](../../../tests/scheduling/test_background_scheduler.py)
 - [`test_sqlite_scheduler.py`](../../../tests/scheduling/test_sqlite_scheduler.py)
 - [`test_scheduler_worker.py`](../../../tests/scheduling/test_scheduler_worker.py)
+- [`test_retry.py`](../../../tests/scheduling/test_retry.py)
 - [`test_worker_events.py`](../../../tests/scheduling/test_worker_events.py)
 - [`test_scheduling_flow.py`](../../../tests/integration/test_scheduling_flow.py)
 - [`test_full_workflow.py`](../../../tests/integration/test_full_workflow.py)
@@ -213,6 +214,7 @@ pytest -q \
   tests/scheduling/test_background_scheduler.py \
   tests/scheduling/test_sqlite_scheduler.py \
   tests/scheduling/test_scheduler_worker.py \
+  tests/scheduling/test_retry.py \
   tests/scheduling/test_worker_events.py \
   tests/integration/test_scheduling_flow.py \
   tests/examples/test_chapter10_background_tasks.py
